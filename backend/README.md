@@ -30,6 +30,7 @@ src/app/
    main.py           # Application entry point
    config.py         # Settings (env vars)
    database.py       # SQLite async connection
+   storage.py        # Image storage with validation & unique filenames
    scheduler.py      # Background price tick scheduler
    admin.py          # Admin panel configuration
    models/           # SQLModel database models
@@ -105,6 +106,28 @@ curl -X POST http://localhost:8000/stocks/ \
 curl -X POST http://localhost:8000/stocks/APPL/image \
   -F "image=@photo.jpg"
 ```
+
+## Image Handling
+
+Images are stored locally in `./data/images/` and served at `/images/{filename}`.
+
+### Validation
+
+- **Allowed types**: JPEG, PNG, GIF, WebP
+- **Max size**: 5MB (configurable via `MAX_IMAGE_SIZE`)
+
+### Unique Filenames
+
+Uploaded files are prefixed with a 12-character UUID to prevent collisions:
+```
+a1b2c3d4e5f6_original_filename.jpg
+```
+
+This allows different stocks to upload files with the same original name without overwriting each other.
+
+### Old Image Cleanup
+
+When replacing a stock's image (via API or admin panel), the old image file is automatically deleted from disk after the new one is saved.
 
 ### Manipulate Price
 
