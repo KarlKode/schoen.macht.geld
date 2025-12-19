@@ -25,6 +25,7 @@ class StockAdmin(ModelView, model=Stock):
     column_default_sort = [("ticker", False)]
     column_formatters_detail = {"prices": lambda m, _: [repr(p) for p in m.prices]}  # pyright: ignore[reportUnknownLambdaType, reportUnknownMemberType]
     form_include_pk = True
+    form_widget_args = {"image": {"accept": "image/*", "capture": "environment"}}
     form_excluded_columns = ["prices", "created_at", "updated_at", "ai_tasks"]
     can_export = False
 
