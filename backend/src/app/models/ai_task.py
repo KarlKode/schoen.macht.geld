@@ -61,5 +61,5 @@ class AITask(SQLModel, table=True):
     stock: "Stock" = Relationship(back_populates="ai_tasks")  # noqa: F821, UP037  # pyright: ignore[reportAny,reportUndefinedVariable]
 
     @override
-    def __repr__(self)-> str:
-        return "<AITask #{} {} for {} ({}>".format(self.id, self.task_type, self.ticker, self.status)
+    def __repr__(self) -> str:
+        return f"<AITask #{self.id} {self.task_type} for {self.ticker} ({self.status}>"

@@ -6,7 +6,7 @@ from apscheduler.schedulers.asyncio import (  # pyright: ignore[reportMissingTyp
     AsyncIOScheduler,
 )
 from loguru import logger
-from sqlmodel import select
+from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.config import settings
@@ -56,7 +56,7 @@ async def process_ai_tasks() -> None:
         # Get pending and processing tasks
         result = await session.exec(
             select(AITask).where(
-                AITask.status.in_([TaskStatus.PENDING, TaskStatus.PROCESSING])  # pyright: ignore[reportAttributeAccessIssue]
+                col(AITask.status).in_([TaskStatus.PENDING, TaskStatus.PROCESSING])
             )
         )
         tasks = result.all()
@@ -94,23 +94,23 @@ async def _submit_task(task: AITask, session: AsyncSession) -> None:
         # Text generation is synchronous (fast)
         response = await atlascloud.generate_text(task.prompt, task.model)
         # Extract text from chat completion response
-        content = response.get("choices", [{}])[0].get("message", {}).get("content", "")
-        task.result = content.strip()
+        content = response.get("choices", [{}])[0].get("message", {}).get("content", "")  # pyright: ignore[reportAny]
+        task.result = content.strip()  # pyright: ignore[reportAny]
         task.status = TaskStatus.COMPLETED
         task.completed_at = datetime.now(UTC)
         logger.info(f"Completed text task {task.id}")
 
     elif task.task_type == TaskType.IMAGE:
         response = await atlascloud.generate_image(task.prompt, task.model)
-        data = response.get("data", {})
-        task.atlascloud_id = data.get("id")
+        data = response.get("data", {})  # pyright: ignore[reportAny]
+        task.atlascloud_id = data.get("id")  # pyright: ignore[reportAny]
         task.status = TaskStatus.PROCESSING
         logger.info(f"Started image task {task.id}, atlascloud_id={task.atlascloud_id}")
 
     elif task.task_type == TaskType.VIDEO:
         response = await atlascloud.generate_video_from_text(task.prompt, task.model)
-        data = response.get("data", {})
-        task.atlascloud_id = data.get("id")
+        data = response.get("data", {})  # pyright: ignore[reportAny]
+        task.atlascloud_id = data.get("id")  # pyright: ignore[reportAny]
         task.status = TaskStatus.PROCESSING
         logger.info(f"Started video task {task.id}, atlascloud_id={task.atlascloud_id}")
 
@@ -141,21 +141,21 @@ async def _poll_task(task: AITask, session: AsyncSession) -> None:
         return
 
     response = await atlascloud.get_task_status(task.atlascloud_id)
-    data = response.get("data", {})
-    status = data.get("status", "").lower()
+    data = response.get("data", {})  # pyright: ignore[reportAny]
+    status = data.get("status", "").lower()  # pyright: ignore[reportAny]
 
     if status == "completed":
         # Download and save the result
-        output_urls = data.get("outputs", [])
+        output_urls = data.get("outputs", [])  # pyright: ignore[reportAny]
         if output_urls:
-            await _download_result(task, output_urls[0])
+            await _download_result(task, output_urls[0])  # pyright: ignore[reportAny]
         task.status = TaskStatus.COMPLETED
         task.completed_at = datetime.now(UTC)
         logger.info(f"Task {task.id} completed: {task.result}")
 
     elif status == "failed":
         task.status = TaskStatus.FAILED
-        task.error = data.get("error", "Unknown error")
+        task.error = data.get("error", "Unknown error")  # pyright: ignore[reportAny]
         task.completed_at = datetime.now(UTC)
         logger.error(f"Task {task.id} failed: {task.error}")
 
@@ -186,7 +186,7 @@ async def _download_result(task: AITask, url: str) -> None:
     # Save with task ID as filename
     filename = f"{task.id}{ext}"
     filepath = output_dir / filename
-    filepath.write_bytes(content)
+    _ = filepath.write_bytes(content)
 
     task.result = str(filepath)
     logger.info(f"Downloaded {task.task_type.value} to {filepath}")
@@ -221,7 +221,7 @@ def start_scheduler() -> None:
     else:
         logger.warning("AtlasCloud API key not set, AI task processor disabled")
 
-    if scheduler.get_jobs():
+    if scheduler.get_jobs():  # pyright: ignore[reportUnknownMemberType]
         scheduler.start()
 
 

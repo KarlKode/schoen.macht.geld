@@ -15,7 +15,11 @@ ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
 
 
 class NonOverwritingFileSystemStorage(FileSystemStorage):
-    """FileSystemStorage that doesn't overwrite existing files and generates new filenames on conflict."""
+    """FileSystemStorage that doesn't overwrite existing files.
+
+    This is achieved by appending an incrementing number to the filename if
+    a file with the same name already exists
+    """
 
     OVERWRITE_EXISTING_FILE: bool = False
 
@@ -41,9 +45,9 @@ def validate_image_size(file: UploadFile) -> None:
     elif file.file:
         # Seek to end to get size
         current_pos = file.file.tell()
-        file.file.seek(0, 2)  # Seek to end
+        _ = file.file.seek(0, 2)  # Seek to end
         file_size = file.file.tell()
-        file.file.seek(current_pos)  # Reset position
+        _ = file.file.seek(current_pos)  # Reset position
 
     if file_size is not None and file_size > settings.max_image_size:
         max_mb = settings.max_image_size / (1024 * 1024)
@@ -96,7 +100,7 @@ def delete_image(image: StorageImage | str | None) -> bool:
 
     try:
         if isinstance(image, StorageImage):
-            image.delete()  # pyright: ignore[reportAttributeAccessIssue]
+            image.delete()  # pyright: ignore[reportUnknownMemberType, reportAttributeAccessIssue]
             logger.debug("Deleted image via StorageImage: {}", image.name)
             return True
         # Handle path string (StorageImage extends str, so check it second)

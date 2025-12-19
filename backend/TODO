@@ -9,6 +9,7 @@
 * [ ] Create computed price history (regularly take the current price for all stocks and their movement
 * [ ] Rework swipe endpoint
 * [ ] Live feed
+* [ ] Limit prices can be sync
 
 ## AI
 
@@ -22,4 +23,4 @@
 * [ ] Improve logo prompt
 
 ## Bugs
-* [ ] Random image name generation leads to 404
+* [x] Random image name generation leads to 404

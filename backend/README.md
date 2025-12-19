@@ -86,6 +86,20 @@ data/
 | POST   | /swipe/                 | Record swipe action      |
 | GET    | /images/{filename}      | Serve uploaded images    |
 
+### List Stocks Query Parameters
+
+| Parameter | Type  | Default | Description                    |
+|-----------|-------|---------|--------------------------------|
+| random    | bool  | false   | Randomize stock order          |
+| limit     | int   | null    | Limit number of stocks returned|
+
+Example: Get 5 random stocks:
+```bash
+curl "http://localhost:8000/stocks/?random=true&limit=5"
+```
+
+**Note:** Price history is limited to the 10 most recent entries per stock to reduce response size.
+
 ### Create Stock
 
 ```bash
@@ -141,7 +155,7 @@ curl -X POST http://localhost:8000/stocks/APPL/price \
 
 Access at `/admin`. Features:
 
-- **Stocks**: View, create, edit, search stocks
+- **Stocks**: View, create, edit, search stocks (supports camera capture on mobile)
 - **Stock Prices**: View price history (read-only)
 - **AI Tasks**: View AI generation tasks and their status
 

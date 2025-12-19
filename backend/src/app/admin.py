@@ -13,17 +13,26 @@ from app.models.stock import Stock, StockPrice
 from app.storage import ALLOWED_IMAGE_TYPES, cleanup_old_image
 
 
-def inspect_and_format(m: Stock, _: str)-> list[str]:
-    return ["{}".format(repr(p)) for p in m.prices]
+def inspect_and_format(m: Stock, _: str) -> list[str]:
+    return [f"{repr(p)}" for p in m.prices]
 
 
 class StockAdmin(ModelView, model=Stock):
     column_list = ["ticker", "title", "is_active", "created_at"]
-    column_details_list = ["ticker", "title", "description", "is_active", "created_at", "updated_at", "prices", "ai_tasks"]
+    column_details_list = [
+        "ticker",
+        "title",
+        "description",
+        "is_active",
+        "created_at",
+        "updated_at",
+        "prices",
+        "ai_tasks",
+    ]
     column_searchable_list = ["ticker", "title"]
     column_sortable_list = ["ticker", "is_active"]
     column_default_sort = [("ticker", False)]
-    column_formatters_detail = {"prices": lambda m, _: [repr(p) for p in m.prices]}  # pyright: ignore[reportUnknownLambdaType, reportUnknownMemberType]
+    column_formatters_detail = {"prices": lambda m, _: [repr(p) for p in m.prices]}  # pyright: ignore[reportUnknownLambdaType, reportUnknownMemberType, reportUnknownArgumentType]
     form_include_pk = True
     form_widget_args = {"image": {"accept": "image/*", "capture": "environment"}}
     form_excluded_columns = ["prices", "created_at", "updated_at", "ai_tasks"]
@@ -33,29 +42,36 @@ class StockAdmin(ModelView, model=Stock):
 
     @override
     async def on_model_change(
-        self, data: dict[str, Any], model: Stock, is_created: bool, request: Request  # pyright: ignore[reportExplicitAny]
+        self,
+        data: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+        model: Stock,
+        is_created: bool,
+        request: Request,
     ) -> None:
         """Validate image before model change."""
         image = data.get("image")
 
-        if image and hasattr(image, "content_type"):
+        if image and hasattr(image, "content_type"):  # pyright: ignore[reportAny]
             # Validate content type
-            if image.content_type not in ALLOWED_IMAGE_TYPES:
+            if image.content_type not in ALLOWED_IMAGE_TYPES:  # pyright: ignore[reportAny]
                 raise ValueError(
-                    f"Invalid image type '{image.content_type}'. Allowed: {', '.join(ALLOWED_IMAGE_TYPES)}"  # pyright: ignore[reportUnknownMemberType, reportAttributeAccessIssue]
+                    f"Invalid image type '{image.content_type}'. "  # pyright: ignore[reportAny]
+                    + f"Allowed: {', '.join(ALLOWED_IMAGE_TYPES)}"
                 )
 
             # Validate file size
-            if hasattr(image, "size") and image.size is not None:
-                if image.size > settings.max_image_size:
+            if hasattr(image, "size") and image.size is not None:  # pyright: ignore[reportAny]
+                if image.size > settings.max_image_size:  # pyright: ignore[reportAny]
                     max_mb = settings.max_image_size / (1024 * 1024)
                     raise ValueError(f"Image too large. Max size: {max_mb:.1f}MB.")
-            elif hasattr(image, "file") and image.file:
+            elif hasattr(image, "file") and image.file:  # pyright: ignore[reportAny]
                 # Try to get size by seeking
-                current_pos = image.file.tell()
-                image.file.seek(0, 2)  # Seek to end
-                file_size = image.file.tell()
-                image.file.seek(current_pos)  # Reset position
+                current_pos = image.file.tell()  # pyright: ignore[reportAny]
+                image.file.seek(0, 2)  # Seek to end  # pyright: ignore[reportAny]
+                file_size = image.file.tell()  # pyright: ignore[reportAny]
+                image.file.seek(  # pyright: ignore[reportAny]
+                    current_pos
+                )  # Reset position
                 if file_size > settings.max_image_size:
                     max_mb = settings.max_image_size / (1024 * 1024)
                     raise ValueError(f"Image too large. Max size: {max_mb:.1f}MB.")
@@ -66,8 +82,13 @@ class StockAdmin(ModelView, model=Stock):
         else:
             self._old_image = None
 
-    async def after_model_change(  # pyright: ignore[reportAny]
-        self, data: dict[str, Any], model: Stock, is_created: bool, request: Request
+    @override
+    async def after_model_change(
+        self,
+        data: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+        model: Stock,
+        is_created: bool,
+        request: Request,
     ) -> None:
         """Clean up old image after model change."""
         if self._old_image:
@@ -86,7 +107,13 @@ class StockPriceAdmin(ModelView, model=StockPrice):
 
 class AITaskAdmin(ModelView, model=AITask):
     column_list = [
-        "id", "ticker", "task_type", "status", "model", "created_at", "completed_at"
+        "id",
+        "ticker",
+        "task_type",
+        "status",
+        "model",
+        "created_at",
+        "completed_at",
     ]
     column_searchable_list = ["id", "ticker", "prompt"]
     column_sortable_list = ["id", "status", "task_type", "created_at"]

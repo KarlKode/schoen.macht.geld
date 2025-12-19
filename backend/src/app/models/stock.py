@@ -38,8 +38,8 @@ class StockPrice(SQLModel, table=True):
     stock: "Stock" = Relationship(back_populates="prices")  # pyright: ignore[reportAny]  # noqa: UP037
 
     @override
-    def __repr__(self)-> str:
-        return "<StockPrice #{} ({})>".format(self.id, self.ticker)
+    def __repr__(self) -> str:
+        return f"<StockPrice #{self.id} ({self.ticker})>"
 
 
 class Stock(SQLModel, table=True):
@@ -68,8 +68,8 @@ class Stock(SQLModel, table=True):
     ai_tasks: list["AITask"] = Relationship(back_populates="stock")  # noqa: F821, UP037  # pyright: ignore[reportAny,reportUndefinedVariable]
 
     @override
-    def __repr__(self)-> str:
-        return "<Stock [{}] {}>".format(self.ticker, self.title)
+    def __repr__(self) -> str:
+        return f"<Stock [{self.ticker}] {self.title}>"
 
     @property
     def price(self) -> float:
@@ -80,6 +80,5 @@ class Stock(SQLModel, table=True):
 
 
 async def limit_prices(s: Stock) -> Stock:
-    s.prices = s.prices[:10] if s and s.prices else s.prices
+    s.prices = s.prices[:10] if s.prices else s.prices
     return s
-

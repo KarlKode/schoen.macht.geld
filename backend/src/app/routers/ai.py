@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from loguru import logger
-from sqlmodel import select
+from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.config import settings
@@ -52,9 +52,7 @@ VIDEO_PROMPT = (
 )
 
 
-async def _get_stock_or_none(
-    session: AsyncSession, ticker: str | None
-) -> Stock | None:
+async def _get_stock_or_none(session: AsyncSession, ticker: str | None) -> Stock | None:
     """Get stock by ticker or return None."""
     if not ticker:
         return None
@@ -187,7 +185,7 @@ async def list_tasks(
     task_type: TaskType | None = None,
 ) -> list[AITaskResponse]:
     """List all AI tasks, optionally filtered by status or type."""
-    query = select(AITask).order_by(AITask.created_at.desc())  # pyright: ignore[reportAttributeAccessIssue]
+    query = select(AITask).order_by(col(AITask.created_at).desc())
 
     if status:
         query = query.where(AITask.status == status)
