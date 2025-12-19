@@ -1,0 +1,17 @@
+# Schön-Macht-Geld Backend TODO
+
+## Stock Endpoints
+
+* Don't return whole price history
+* Define "last price" and compute percentage change
+* Create computed price history (regularly take the current price for all stocks and their movement
+* Rework swipe endpoint
+* Live feed
+
+## News
+
+* Generate news updates that react to stock price changes, overtakes, profits etc.
+
+
+## Bugs
+* Random image name generation leads to 404
