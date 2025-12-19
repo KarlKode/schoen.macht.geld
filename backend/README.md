@@ -143,6 +143,7 @@ Access at `/admin`. Features:
 
 - **Stocks**: View, create, edit, search stocks
 - **Stock Prices**: View price history (read-only)
+- **AI Tasks**: View AI generation tasks and their status
 
 ## Background Scheduler
 
@@ -150,6 +151,69 @@ When enabled, the scheduler periodically applies random price changes (±5%) to 
 
 - `PRICE_TICK_INTERVAL` - Seconds between updates (default: 60)
 - `PRICE_TICK_ENABLED` - Enable/disable (default: true)
+
+## AI Content Generation
+
+Generate absurd/funny stock content using [AtlasCloud](https://www.atlascloud.ai/) AI APIs. Requires an API key.
+
+### Features
+
+- **Description Generation**: Create satirical stock descriptions
+- **Image Generation**: Generate logos, billboards, website mockups, and main images
+- **Video Generation**: Create short advertisement clips
+
+### AI Endpoints
+
+| Method | Path                      | Description                    |
+|--------|---------------------------|--------------------------------|
+| POST   | /ai/generate/description  | Generate stock description     |
+| POST   | /ai/generate/image        | Generate stock image           |
+| POST   | /ai/generate/video        | Generate advertisement video   |
+| GET    | /ai/tasks                 | List all AI tasks              |
+| GET    | /ai/tasks/{task_id}       | Get task status and result     |
+| POST   | /ai/tasks/{task_id}/apply | Apply result to stock          |
+| DELETE | /ai/tasks/{task_id}       | Delete task                    |
+
+### Example Usage
+
+```bash
+# Generate a description for a stock
+curl -X POST http://localhost:8000/ai/generate/description \
+  -H "Content-Type: application/json" \
+  -d '{"ticker": "APPL"}'
+
+# Generate an image (logo type)
+curl -X POST http://localhost:8000/ai/generate/image \
+  -H "Content-Type: application/json" \
+  -d '{"ticker": "APPL", "image_type": "logo"}'
+
+# Check task status
+curl http://localhost:8000/ai/tasks/{task_id}
+
+# Apply generated description to stock
+curl -X POST http://localhost:8000/ai/tasks/{task_id}/apply \
+  -H "Content-Type: application/json" \
+  -d '{"ticker": "APPL"}'
+```
+
+### How It Works
+
+1. API request creates an `AITask` in pending status
+2. Background scheduler picks up pending tasks
+3. Task is submitted to AtlasCloud API
+4. Scheduler polls for completion
+5. Results are downloaded and stored locally
+6. Client polls `/ai/tasks/{id}` for status
+
+### Models Used
+
+| Type  | Default Model                           | Cost        |
+|-------|----------------------------------------|-------------|
+| Text  | google/gemini-3-flash-preview-developer | FREE        |
+| Image | black-forest-labs/flux-schnell          | $0.00255/img|
+| Video | alibaba/wan-2.2/t2v-480p-ultra-fast     | $0.0085/sec |
+
+Override via environment variables or pass `model` parameter in requests.
 
 ## Configuration
 
@@ -166,6 +230,12 @@ Environment variables (or `.env` file):
 | PRICE_TICK_ENABLED  | true                                 | Enable background price updates    |
 | IMAGE_DIR           | ./data/images                        | Directory for uploaded images      |
 | MAX_IMAGE_SIZE      | 5242880                              | Max image upload size (bytes)      |
+| ATLASCLOUD_API_KEY  | (required for AI)                    | AtlasCloud API key                 |
+| ATLASCLOUD_TEXT_MODEL | google/gemini-3-flash-preview-developer | Text generation model     |
+| ATLASCLOUD_IMAGE_MODEL | black-forest-labs/flux-schnell    | Image generation model             |
+| ATLASCLOUD_VIDEO_T2V_MODEL | alibaba/wan-2.2/t2v-480p-ultra-fast | Text-to-video model        |
+| AI_TASK_POLL_INTERVAL | 10                                 | Seconds between AI task polls      |
+| AI_TASK_TIMEOUT     | 300                                  | Max seconds for AI task completion |
 
 ## Development
 

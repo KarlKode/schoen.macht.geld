@@ -4,9 +4,9 @@ import uuid
 from pathlib import Path
 
 from fastapi import HTTPException, UploadFile
-from fastapi_storages import (
-    FileSystemStorage,  # pyright: ignore[reportMissingTypeStubs]
-    StorageImage,  # pyright: ignore[reportMissingTypeStubs]
+from fastapi_storages import (  # pyright: ignore[reportMissingTypeStubs]
+    FileSystemStorage,
+    StorageImage,
 )
 from loguru import logger
 

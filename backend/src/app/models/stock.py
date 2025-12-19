@@ -2,10 +2,7 @@ from datetime import UTC, datetime
 from enum import Enum
 from functools import partial
 
-from fastapi_storages import (  # pyright: ignore[reportMissingTypeStubs]
-    FileSystemStorage,
-    StorageImage,
-)
+from fastapi_storages import StorageImage  # pyright: ignore[reportMissingTypeStubs]
 from fastapi_storages.integrations.sqlalchemy import (  # pyright: ignore[reportMissingTypeStubs]
     ImageType,
 )
@@ -13,6 +10,7 @@ from sqlmodel import Column, Field, Relationship, SQLModel
 from sqlmodel._compat import SQLModelConfig
 
 from app.config import settings
+from app.storage import storage
 
 
 class ChangeType(str, Enum):
@@ -47,9 +45,7 @@ class Stock(SQLModel, table=True):
 
     ticker: str = Field(max_length=4, primary_key=True)
     title: str = Field(max_length=100)
-    image: StorageImage | None = Field(
-        sa_column=Column(ImageType(storage=FileSystemStorage(path=settings.image_dir)))
-    )
+    image: StorageImage | None = Field(sa_column=Column(ImageType(storage=storage)))
     description: str = ""
     is_active: bool = Field(default=True)
 
@@ -63,6 +59,8 @@ class Stock(SQLModel, table=True):
             "order_by": "StockPrice.created_at.desc()",
         },
     )
+
+    ai_tasks: list["AITask"] = Relationship(back_populates="stock")  # noqa: F821, UP037  # pyright: ignore[reportAny,reportUndefinedVariable]
 
     @property
     def price(self) -> float:

@@ -9,7 +9,7 @@ from loguru import logger
 from app.admin import setup_admin
 from app.config import settings
 from app.database import engine, init_db
-from app.routers import stocks, swipe
+from app.routers import ai, stocks, swipe
 from app.scheduler import start_scheduler, stop_scheduler
 
 
@@ -46,6 +46,7 @@ app.add_middleware(
 
 app.include_router(stocks.router, prefix="/stocks", tags=["stocks"])
 app.include_router(swipe.router, prefix="/swipe", tags=["swipe"])
+app.include_router(ai.router, prefix="/ai", tags=["ai"])
 
 # Serve uploaded images
 app.mount("/images", StaticFiles(directory=settings.image_dir), name="images")

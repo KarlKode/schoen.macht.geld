@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from starlette.requests import Request
 
 from app.config import settings
+from app.models.ai_task import AITask
 from app.models.stock import Stock, StockPrice
 from app.storage import ALLOWED_IMAGE_TYPES, cleanup_old_image
 
@@ -76,8 +77,23 @@ class StockPriceAdmin(ModelView, model=StockPrice):
     can_export = False
 
 
+class AITaskAdmin(ModelView, model=AITask):
+    column_list = [
+        "id", "ticker", "task_type", "status", "model", "created_at", "completed_at"
+    ]
+    column_searchable_list = ["id", "ticker", "prompt"]
+    column_sortable_list = ["id", "status", "task_type", "created_at"]
+    column_default_sort = [("created_at", True)]
+    can_create = False
+    can_edit = False
+    can_export = False
+    name = "AI Task"
+    name_plural = "AI Tasks"
+
+
 def setup_admin(app: FastAPI, engine: AsyncEngine) -> Admin:
     admin = Admin(app, engine, title="Schoen Macht Geld Admin")
     admin.add_view(StockAdmin)
     admin.add_view(StockPriceAdmin)
+    admin.add_view(AITaskAdmin)
     return admin

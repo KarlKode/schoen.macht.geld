@@ -13,8 +13,7 @@ from app.schemas.stock import (
     StockPriceUpdate,
     StockResponse,
 )
-
-ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
+from app.storage import cleanup_old_image, validate_image
 
 router = APIRouter()
 
@@ -51,12 +50,8 @@ async def create_stock(
         raise HTTPException(status_code=400, detail=f"Ticker {ticker} already exists")
 
     # Validate image if provided
-    # TODO(mg): Validate image file size
-    if image and image.content_type not in ALLOWED_IMAGE_TYPES:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid image type. Allowed: {', '.join(ALLOWED_IMAGE_TYPES)}",
-        )
+    if image:
+        validate_image(image)
 
     stock = Stock(
         ticker=ticker,
@@ -105,18 +100,11 @@ async def upload_stock_image(
         logger.warning("Stock not found: {}", ticker)
         raise HTTPException(status_code=404, detail="Stock not found")
 
-    # Validate content type
-    if image.content_type not in ALLOWED_IMAGE_TYPES:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid image type. Allowed: {', '.join(ALLOWED_IMAGE_TYPES)}",
-        )
+    # Validate image
+    validate_image(image)
 
-    # Save file
-    # TODO(mg): Validate image file size
-    if stock.image:
-        # TODO(mg): Delete old image
-        pass
+    # Clean up old image before replacing
+    old_image = stock.image
     stock.image = image  # pyright: ignore[reportAttributeAccessIssue]
 
     # Save stock
@@ -124,6 +112,9 @@ async def upload_stock_image(
     session.add(stock)
     await session.commit()
     await session.refresh(stock)
+
+    # Clean up old image after successful commit
+    cleanup_old_image(old_image)
 
     logger.info(
         "Uploaded image for {}: {}",
