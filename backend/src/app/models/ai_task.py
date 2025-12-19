@@ -1,6 +1,7 @@
 from datetime import UTC, datetime
 from enum import Enum
 from functools import partial
+from typing import override
 from uuid import uuid4
 
 from sqlmodel import Field, Relationship, SQLModel
@@ -58,3 +59,7 @@ class AITask(SQLModel, table=True):
     completed_at: datetime | None = Field(default=None)
 
     stock: "Stock" = Relationship(back_populates="ai_tasks")  # noqa: F821, UP037  # pyright: ignore[reportAny,reportUndefinedVariable]
+
+    @override
+    def __repr__(self)-> str:
+        return "<AITask #{} {} for {} ({}>".format(self.id, self.task_type, self.ticker, self.status)

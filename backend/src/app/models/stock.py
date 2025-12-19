@@ -1,6 +1,7 @@
 from datetime import UTC, datetime
 from enum import Enum
 from functools import partial
+from typing import override
 
 from fastapi_storages import StorageImage  # pyright: ignore[reportMissingTypeStubs]
 from fastapi_storages.integrations.sqlalchemy import (  # pyright: ignore[reportMissingTypeStubs]
@@ -36,6 +37,10 @@ class StockPrice(SQLModel, table=True):
 
     stock: "Stock" = Relationship(back_populates="prices")  # pyright: ignore[reportAny]  # noqa: UP037
 
+    @override
+    def __repr__(self)-> str:
+        return "<StockPrice #{} ({})>".format(self.id, self.ticker)
+
 
 class Stock(SQLModel, table=True):
     """Stock database model."""
@@ -61,6 +66,10 @@ class Stock(SQLModel, table=True):
     )
 
     ai_tasks: list["AITask"] = Relationship(back_populates="stock")  # noqa: F821, UP037  # pyright: ignore[reportAny,reportUndefinedVariable]
+
+    @override
+    def __repr__(self)-> str:
+        return "<Stock [{}] {}>".format(self.ticker, self.title)
 
     @property
     def price(self) -> float:

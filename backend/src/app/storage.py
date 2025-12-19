@@ -1,6 +1,5 @@
 """Custom file storage with validation and unique filenames."""
 
-import uuid
 from pathlib import Path
 
 from fastapi import HTTPException, UploadFile
@@ -15,20 +14,14 @@ from app.config import settings
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
 
 
-class UniqueFileSystemStorage(FileSystemStorage):  # pyright: ignore[reportMissingTypeStubs]
-    """FileSystemStorage with unique filenames using UUID prefix."""
+class NonOverwritingFileSystemStorage(FileSystemStorage):
+    """FileSystemStorage that doesn't overwrite existing files and generates new filenames on conflict."""
 
-    def get_name(self, name: str) -> str:
-        """Generate unique filename with UUID prefix."""
-        # Get the sanitized base name from parent
-        safe_name = super().get_name(name)
-        # Add UUID prefix to ensure uniqueness
-        unique_id = uuid.uuid4().hex[:12]
-        return f"{unique_id}_{safe_name}"
+    OVERWRITE_EXISTING_FILE: bool = False
 
 
 # Singleton storage instance
-storage = UniqueFileSystemStorage(path=settings.image_dir)
+storage = NonOverwritingFileSystemStorage(path=settings.image_dir)
 
 
 def validate_image_size(file: UploadFile) -> None:
