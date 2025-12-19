@@ -2,16 +2,24 @@
 
 ## Stock Endpoints
 
-* Don't return whole price history
-* Define "last price" and compute percentage change
-* Create computed price history (regularly take the current price for all stocks and their movement
-* Rework swipe endpoint
-* Live feed
+* [x] Don't return whole price history
+* [x] Add random and limit parameters to the stock endpoint to select N random stocks
+* [x] Modify stock admin form to support camera capture
+* [ ] Define "last price" and compute percentage change
+* [ ] Create computed price history (regularly take the current price for all stocks and their movement
+* [ ] Rework swipe endpoint
+* [ ] Live feed
 
-## News
+## AI
 
-* Generate news updates that react to stock price changes, overtakes, profits etc.
+### News
 
+* [ ] Generate news updates that react to stock price changes, overtakes, profits etc.
+
+### Logo
+
+* [ ] Generate a logo for a stock using its title & description
+* [ ] Improve logo prompt
 
 ## Bugs
-* Random image name generation leads to 404
+* [ ] Random image name generation leads to 404

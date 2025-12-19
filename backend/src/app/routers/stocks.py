@@ -1,12 +1,14 @@
 from datetime import UTC, datetime
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from loguru import logger
+from sqlalchemy import func
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.database import get_session
-from app.models.stock import ChangeType, Stock, StockPrice
+from app.models.stock import ChangeType, Stock, StockPrice, limit_prices
 from app.schemas.stock import (
     StockCreate,
     StockImageUpdate,
@@ -26,13 +28,20 @@ def generate_ticker(title: str) -> str:
 
 @router.get("/")
 async def list_stocks(
+    random: Annotated[bool, Query()] = False,
+    limit: Annotated[int | None, Query()] = None,
     session: AsyncSession = Depends(get_session),
 ) -> list[StockResponse]:
     """Get all stocks."""
-    result = await session.exec(select(Stock))
+    sel = select(Stock)
+    if random:
+        sel = sel.order_by(func.random())
+    if limit:
+        sel = sel.limit(limit)
+    result = await session.exec(sel)
     stocks = result.all()
     logger.debug("Listed {} stocks", len(stocks))
-    return [StockResponse.model_validate(s) for s in stocks]
+    return [StockResponse.model_validate(await limit_prices(s)) for s in stocks]
 
 
 @router.post("/")

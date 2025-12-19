@@ -77,3 +77,9 @@ class Stock(SQLModel, table=True):
         if self.prices:
             return self.prices[0].price
         return settings.stock_base_price
+
+
+async def limit_prices(s: Stock) -> Stock:
+    s.prices = s.prices[:10] if s and s.prices else s.prices
+    return s
+
