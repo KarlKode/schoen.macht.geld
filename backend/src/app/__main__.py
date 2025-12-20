@@ -11,4 +11,5 @@ if __name__ == "__main__":
         port=settings.uvicorn_port,
         workers=settings.uvicorn_workers,
         reload=settings.debug,
+        root_path=settings.root_path,
     )

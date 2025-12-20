@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     uvicorn_host: str = "127.0.0.1"
     uvicorn_port: int = 8000
     uvicorn_workers: int = 1  # Use 4+ for production
+    root_path: str = ""  # Set to "/api" when behind a reverse proxy stripping prefix
 
     # Stock base price
     stock_base_price: float = 1000.0

@@ -36,6 +36,7 @@ app = FastAPI(
     description="Backend for the stock exchange party game",
     version="0.1.0",
     lifespan=lifespan,
+    root_path=settings.root_path,
 )
 
 app.add_middleware(

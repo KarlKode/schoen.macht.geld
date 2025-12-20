@@ -1,45 +1,56 @@
 services:
   backend:
-    build: .
+    build: ./backend
     restart: unless-stopped
     volumes:
-      # Persist database and images
-      - ./data:/app/data
-      # Mount .env file for configuration
-      - ./.env:/app/.env:ro
+      - ./backend/data:/app/data
+      - ./backend/.env:/app/.env:ro
     environment:
       - DATABASE_URL=sqlite+aiosqlite:///./data/stocks.db
       - IMAGE_DIR=/app/data/images
+      - ROOT_PATH=/api
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 10s
-    # Expose port for debugging (optional, Caddy proxies in production)
-    # ports:
-    #   - "8000:8000"
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    environment:
+      - NEXT_PUBLIC_API_URL=/api
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
     ports:
-      - "80:80"
-      - "443:443"
+      - "8080:80"
+      - "8443:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - ./data/images:/srv/images:ro
+      - ./backend/data/images:/srv/images:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
-      backend:
+      frontend:
         condition: service_healthy
 
   backup:
-    build: ./backup
+    build: ./backend/backup
     volumes:
-      - ./data:/data:ro        # Read-only access to live data
-      - ./backups:/backups     # Write snapshots here
+      - ./backend/data:/data:ro
+      - ./backend/backups:/backups
     restart: unless-stopped
 
 volumes:

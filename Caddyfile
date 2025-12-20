@@ -1,5 +1,5 @@
 # Caddy reverse proxy configuration
-# Replace "localhost" with your actual domain for production
+# Replace ":80" with your actual domain for production (e.g., "smg.example.com")
 
 :80 {
     # Serve static images directly (more efficient)
@@ -8,8 +8,32 @@
         file_server
     }
 
-    # Proxy all other requests to the backend
-    handle {
+    # API requests to backend
+    handle /api/* {
+        uri strip_prefix /api
         reverse_proxy backend:8000
+    }
+
+    # Admin panel (backend)
+    handle /admin/* {
+        reverse_proxy backend:8000
+    }
+
+    # OpenAPI docs (backend)
+    handle /docs {
+        reverse_proxy backend:8000
+    }
+    handle /openapi.json {
+        reverse_proxy backend:8000
+    }
+
+    # Health check (backend)
+    handle /health {
+        reverse_proxy backend:8000
+    }
+
+    # Everything else to frontend
+    handle {
+        reverse_proxy frontend:3000
     }
 }
