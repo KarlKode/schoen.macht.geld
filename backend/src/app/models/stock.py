@@ -75,6 +75,14 @@ class Stock(SQLModel, table=True):
     reference_price: float | None = Field(default=None)
     reference_price_at: datetime | None = Field(default=None)
 
+    # Ranking by price (updated by snapshot job)
+    rank: int | None = Field(default=None)  # Current rank (1 = highest price)
+    previous_rank: int | None = Field(default=None)  # Rank at previous snapshot
+
+    # Ranking by percentage change (updated by snapshot job)
+    change_rank: int | None = Field(default=None)  # Current rank (1 = highest gain)
+    previous_change_rank: int | None = Field(default=None)  # Rank at previous snapshot
+
     created_at: datetime = Field(default_factory=partial(datetime.now, UTC))
     updated_at: datetime = Field(default_factory=partial(datetime.now, UTC))
 
@@ -113,6 +121,20 @@ class Stock(SQLModel, table=True):
         if self.reference_price is None or self.reference_price == 0:
             return None
         return ((self.price - self.reference_price) / self.reference_price) * 100
+
+    @property
+    def rank_change(self) -> int | None:
+        """Places gained/lost in price ranking (positive = moved up)."""
+        if self.rank is None or self.previous_rank is None:
+            return None
+        return self.previous_rank - self.rank
+
+    @property
+    def change_rank_change(self) -> int | None:
+        """Places gained/lost in percentage change ranking (positive = moved up)."""
+        if self.change_rank is None or self.previous_change_rank is None:
+            return None
+        return self.previous_change_rank - self.change_rank
 
 
 def limit_price_events(s: Stock) -> Stock:

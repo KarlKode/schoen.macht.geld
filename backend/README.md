@@ -45,19 +45,25 @@ data/
 
 ### Stock
 
-| Field             | Type          | Description                              |
-|-------------------|---------------|------------------------------------------|
-| ticker            | str           | Primary key (4 chars, e.g. "AAPL")       |
-| title             | str           | Display name                             |
-| image             | StorageImage? | Uploaded image (served at `/images/`)    |
-| description       | str           | Optional description                     |
-| is_active         | bool          | Whether stock is tradeable               |
-| price             | float         | Current price (from latest PriceEvent)   |
-| reference_price   | float?        | Price at last snapshot (for % change)    |
-| reference_price_at| datetime?     | When reference price was set             |
-| percentage_change | float?        | Change from reference price (computed)   |
-| price_events      | list          | Price change event log                   |
-| snapshots         | list          | Periodic price snapshots for graphs      |
+| Field               | Type          | Description                              |
+|---------------------|---------------|------------------------------------------|
+| ticker              | str           | Primary key (4 chars, e.g. "AAPL")       |
+| title               | str           | Display name                             |
+| image               | StorageImage? | Uploaded image (served at `/images/`)    |
+| description         | str           | Optional description                     |
+| is_active           | bool          | Whether stock is tradeable               |
+| price               | float         | Current price (from latest PriceEvent)   |
+| reference_price     | float?        | Price at last snapshot (for % change)    |
+| reference_price_at  | datetime?     | When reference price was set             |
+| percentage_change   | float?        | Change from reference price (computed)   |
+| rank                | int?          | Current rank by price (1 = highest)      |
+| previous_rank       | int?          | Rank at previous snapshot                |
+| rank_change         | int?          | Places gained/lost (positive = up)       |
+| change_rank         | int?          | Current rank by % change (1 = top gainer)|
+| previous_change_rank| int?          | Change rank at previous snapshot         |
+| change_rank_change  | int?          | Places gained/lost (positive = up)       |
+| price_events        | list          | Price change event log                   |
+| snapshots           | list          | Periodic price snapshots for graphs      |
 
 ### PriceEvent
 
@@ -189,8 +195,15 @@ Periodically applies random price changes (±5%) to all active stocks.
 - `PRICE_TICK_INTERVAL` - Seconds between updates (default: 60)
 - `PRICE_TICK_ENABLED` - Enable/disable (default: true)
 
-### Price Snapshots
-Periodically captures price snapshots for line graphs and percentage change calculation.
+### Price Snapshots & Rankings
+Periodically captures price snapshots and calculates rankings for all active stocks.
+
+Each snapshot:
+1. Updates `reference_price` for percentage change calculation
+2. Creates a `StockSnapshot` entry for graph history
+3. Calculates rankings by price (`rank`) and by percentage change (`change_rank`)
+4. Tracks places gained/lost (`rank_change`, `change_rank_change`)
+
 Snapshots are automatically cleaned up to keep only the most recent N per stock.
 
 - `SNAPSHOT_INTERVAL` - Seconds between snapshots (default: 60)
@@ -307,8 +320,8 @@ The following changes need to be made in the frontend:
 | `photo_url`     | `image`         | Now `StorageImage?` (file upload)   |
 | `current_value` | `price`         | Computed from latest PriceEvent     |
 | `initial_value` | `initial_price` | Computed from first PriceEvent      |
-| `rank`          | -               | Removed                             |
-| `previous_rank` | -               | Removed                             |
+| `rank`          | `rank`          | Now computed by snapshot scheduler  |
+| `previous_rank` | `previous_rank` | Now computed by snapshot scheduler  |
 | `history`       | `price_events`  | Renamed                             |
 | -               | `is_active`     | New field (boolean)                 |
 

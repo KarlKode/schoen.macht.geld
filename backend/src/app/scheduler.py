@@ -53,18 +53,22 @@ async def tick_prices() -> None:
 async def snapshot_prices() -> None:
     """Take price snapshots for all active stocks.
 
-    Updates reference_price for percentage change calculation and
-    creates StockSnapshot entries for graph history.
+    Updates reference_price for percentage change calculation,
+    creates StockSnapshot entries for graph history,
+    and calculates rankings.
     """
     async with async_session_maker() as session:
         result = await session.exec(select(Stock).where(Stock.is_active == True))  # noqa: E712
-        stocks = result.all()
+        stocks = list(result.all())
 
         if not stocks:
             logger.debug("No active stocks to snapshot")
             return
 
         now = datetime.now(UTC)
+
+        # Calculate rankings before updating reference prices
+        _update_rankings(stocks)
 
         for stock in stocks:
             # Update reference price for percentage change calculation
@@ -84,6 +88,31 @@ async def snapshot_prices() -> None:
 
         # Cleanup old snapshots
         await _cleanup_old_snapshots(session)
+
+
+def _update_rankings(stocks: list[Stock]) -> None:
+    """Calculate and update rankings for all stocks."""
+    # Save current ranks as previous ranks
+    for stock in stocks:
+        stock.previous_rank = stock.rank
+        stock.previous_change_rank = stock.change_rank
+
+    # Rank by price (descending - highest price = rank 1)
+    stocks_by_price = sorted(stocks, key=lambda s: s.price, reverse=True)
+    for i, stock in enumerate(stocks_by_price, start=1):
+        stock.rank = i
+
+    # Rank by percentage change (descending - highest gain = rank 1)
+    # Stocks without percentage_change go last
+    def change_sort_key(s: Stock) -> tuple[int, float]:
+        pct = s.percentage_change
+        if pct is None:
+            return (1, 0.0)  # No change = sort last
+        return (0, -pct)  # Has change = sort by change descending
+
+    stocks_by_change = sorted(stocks, key=change_sort_key)
+    for i, stock in enumerate(stocks_by_change, start=1):
+        stock.change_rank = i
 
 
 async def _cleanup_old_snapshots(session: AsyncSession) -> None:

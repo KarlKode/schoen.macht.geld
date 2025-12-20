@@ -47,6 +47,16 @@ class StockResponse(BaseModel):
     reference_price_at: datetime | None = None
     percentage_change: float | None = None  # Change since last snapshot
 
+    # Ranking by price (1 = highest price)
+    rank: int | None = None
+    previous_rank: int | None = None
+    rank_change: int | None = None  # Positive = moved up
+
+    # Ranking by percentage change (1 = highest gain)
+    change_rank: int | None = None
+    previous_change_rank: int | None = None
+    change_rank_change: int | None = None  # Positive = moved up
+
     @computed_field
     @property
     def initial_price(self) -> float:
