@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Form
+from fastapi import APIRouter, Depends, Form, HTTPException, Query
 from loguru import logger
 from sqlalchemy import func
 from sqlmodel import col, select
@@ -18,7 +18,6 @@ from app.models.stock import (
 )
 from app.schemas.stock import (
     PriceEventResponse,
-    StockCreate,
     StockImageUpdate,
     StockPriceUpdate,
     StockResponse,

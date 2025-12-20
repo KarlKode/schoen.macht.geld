@@ -96,7 +96,9 @@ async def create_stock(stock_data: dict[str, str | float], image_url: str) -> No
         elif response.status_code == 400 and "already exists" in response.text:
             print(f"  Skipped (exists): {stock_data['ticker']}")
         else:
-            print(f"  Failed: {stock_data['ticker']} - {response.status_code}: {response.text}")
+            print(
+                f"  Failed: {stock_data['ticker']} - {response.status_code}: {response.text}"
+            )
 
 
 async def main():

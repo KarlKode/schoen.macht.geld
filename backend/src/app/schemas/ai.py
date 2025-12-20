@@ -70,3 +70,17 @@ class MessageResponse(BaseModel):
 
     message: str
     note: str | None = None
+
+
+class GenerateHeadlinesRequest(BaseModel):
+    """Request to generate news headlines about top stocks."""
+
+    count: int = 5  # Number of headlines to generate (1-10)
+    model: str | None = None  # Override default model
+
+
+class HeadlinesResponse(BaseModel):
+    """Response containing generated headlines."""
+
+    headlines: list[str]
+    stocks_used: list[str]  # Tickers of stocks used for generation

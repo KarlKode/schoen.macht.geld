@@ -14,23 +14,66 @@ from app.schemas.ai import (
     AITaskResponse,
     ApplyResultRequest,
     GenerateDescriptionRequest,
+    GenerateHeadlinesRequest,
     GenerateImageRequest,
     GenerateVideoRequest,
+    HeadlinesResponse,
     MessageResponse,
 )
 
 router = APIRouter()
 
-# Prompt templates
-DESCRIPTION_PROMPT = (
-    "You are a satirical stock market analyst. Take this stock and make "
-    "its description absurd, exaggerated, and funny while keeping it "
-    "believable enough for a parody stock trading game.\n\n"
-    "Stock: {title}\n"
-    "Current description: {description}\n\n"
-    "Write a new 2-3 sentence description that is ridiculous but "
-    "entertaining. Only output the description, no other text."
-)
+# Prompt templates (German, Party-Themed for "Schön. Macht. Geld.")
+DESCRIPTION_PROMPT = """Du bist ein Ghostwriter für die exzessive Zürcher Partyszene und
+schreibst witzige, bissige "Börsenprospekte" in der Ich-Perspektive für das Partyspiel
+"Schön. Macht. Geld.". Das Spiel wird vom "Verein für ambitionierten Konsum (VAK)" und
+dem Club "Amphitheater"veranstaltet.
+Das Motto: hedonistischer Konsum, Macht, Schönheit und Drogen.
+
+Schreibe eine sarkastische, ironische und prahlerische Profilbeschreibung in der
+Ich-Form, basierend auf dem Spitznamen der Person.
+
+Spitzname: {title}
+Aktuelle Beschreibung (falls vorhanden): {description}
+
+Regeln:
+1. **Perspektive:** Schreibe immer aus der Ich-Perspektive.
+2. **Ton:** Selbstverliebt, sarkastisch, satirisch. Mische Finanzjargon mit Party-Slang.
+3. **Themen:** Spiele mit Klischees über das Zürcher Nachtleben:
+               Konsum, Status, Oberflächlichkeit und Exzesse.
+4. **Länge:** Maximal 350 Zeichen (inkl. Leerzeichen).
+5. **Sprache:** Deutsch.
+
+Beispiel: "Mein Kurs? Steigt schneller als mein Puls nach der dritten Line. Ich bin
+keine Aktie, ich bin ein Gerücht, eine Legende auf dem Zürcher Parkett. Investier
+jetzt, bevor ich zu teuer für dein kleines Portfolio werde."
+
+Gib nur die Beschreibung aus, keinen anderen Text."""
+
+HEADLINES_PROMPT = """Du bist ein zynischer Finanzredakteur für ein Klatschblatt, das
+über das Börsen-Partyspiel "Schön. Macht. Geld." berichtet, veranstaltet vom "Verein für
+ambitionierten Konsum (VAK)" und "Amphitheater" in Zürich. Dein Publikum liebt Klatsch,
+dunklen Humor und ist fasziniert von der hedonistischen Party-Szene, Konsum, Drogen und
+der Absurdität, den Selbstwert an einen Aktienkurs zu koppeln.
+
+Basierend auf den folgenden Informationen über die volatilsten Aktien, generiere ein Set
+von genau {count} kurzen, schlagkräftigen und urkomischen Schlagzeilen. Jede Schlagzeile
+sollte für sich stehen. Der Ton sollte scharf, ironisch und voller Satire sein. Denk an
+eine Mischung aus Society-Klatsch und Finanz-Desaster.
+
+Achte auf korrekte deutsche Rechtschreibung und die korrekte Verwendung
+von Umlauten (ä, ö, ü).
+
+Hier sind die Daten der Top-Aktien:
+{stocks_data}
+
+Generiere {count} einzigartige Schlagzeilen.
+Sei provokant und einprägsam. Konzentriere dich auf Themen wie soziale Kletterei,
+vergänglichen Ruhm, schlechte Entscheidungen auf Partys, Exzesse im Zürcher Nachtleben
+und die Absurdität des Ganzen.
+
+Gib die Schlagzeilen als JSON-Array aus, z.B.: ["Schlagzeile 1", "Schlagzeile 2", ...]
+"""
 
 IMAGE_PROMPTS = {
     ImageType.MAIN: (
@@ -176,6 +219,92 @@ async def generate_video(
         task_id=task.id,
         status=task.status,
         message=f"Video generation started for '{title}'",
+    )
+
+
+@router.post("/generate/headlines")
+async def generate_headlines(
+    request: GenerateHeadlinesRequest,
+    session: AsyncSession = Depends(get_session),
+) -> HeadlinesResponse:
+    """
+    Generate satirical news headlines about the top volatile stocks.
+
+    Returns headlines immediately (synchronous generation).
+    """
+    import json
+    import re
+
+    from app.services.atlascloud import atlascloud
+    from app.services.google_ai import google_ai
+
+    # Clamp count to valid range
+    count = max(1, min(10, request.count))
+
+    # Get top volatile stocks (sorted by absolute percent change)
+    query = select(Stock).limit(count)
+    result = await session.exec(query)
+    all_stocks = list(result.all())
+
+    if not all_stocks:
+        return HeadlinesResponse(headlines=[], stocks_used=[])
+
+    # Sort by absolute percent change (most volatile first)
+    stocks = sorted(
+        all_stocks,
+        key=lambda s: abs(s.percent_change),  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType, reportAttributeAccessIssue]
+        reverse=True,
+    )[:count]
+
+    # Build stocks data string for prompt
+    stocks_data = "\n".join(
+        f"- Börsenkürzel: {s.ticker}, Spitzname: {s.title}, "
+        + f"Aktueller Wert: {s.price:.2f} CHF, "
+        + f"Veränderung: {s.change:.2f} CHF ({s.percent_change:.2f}%)"  # pyright: ignore[reportUnknownMemberType, reportAttributeAccessIssue]
+        for s in stocks
+    )
+
+    prompt = HEADLINES_PROMPT.format(count=count, stocks_data=stocks_data)
+    model = request.model or settings.atlascloud_text_model
+
+    # Try AtlasCloud first, fall back to Google AI
+    try:
+        response = await atlascloud.generate_text(prompt, model)
+        response_text = str(response["choices"][0]["message"]["content"])  # pyright: ignore[reportAny]
+    except Exception as e:
+        logger.warning("AtlasCloud failed, trying Google AI: {}", e)
+        try:
+            response = await google_ai.generate_text(prompt)
+            response_text = str(response["choices"][0]["message"]["content"])  # pyright: ignore[reportAny]
+        except Exception as e2:
+            logger.error("Both AI providers failed: {}", e2)
+            raise HTTPException(status_code=503, detail="AI service unavailable")
+
+    # Parse JSON array from response
+    try:
+        json_match = re.search(r"\[.*\]", response_text, re.DOTALL)
+        if json_match:
+            headlines = json.loads(json_match.group())  # pyright: ignore[reportAny]
+        else:
+            # Fallback: split by newlines and clean up
+            headlines = [
+                line.strip().strip('"').strip("'")
+                for line in response_text.split("\n")
+                if line.strip()
+                and not line.startswith("[")
+                and not line.startswith("]")
+            ]
+    except json.JSONDecodeError:
+        headlines = [response_text.strip()]
+
+    logger.info(
+        "Generated {} headlines for stocks: {}",
+        len(headlines),
+        [s.ticker for s in stocks],
+    )
+    return HeadlinesResponse(
+        headlines=headlines[:count],
+        stocks_used=[s.ticker for s in stocks],
     )
 
 
