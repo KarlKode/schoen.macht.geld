@@ -1,12 +1,13 @@
 from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Form
 from loguru import logger
 from sqlalchemy import func
 from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from app.config import settings
 from app.database import get_session
 from app.models.stock import (
     ChangeType,
@@ -48,12 +49,18 @@ async def list_stocks(
 
 @router.post("/")
 async def create_stock(
-    request: StockCreate,
+    ticker: Annotated[str, Form()],
+    title: Annotated[str, Form()],
+    description: Annotated[str, Form()] = "",
+    initial_price: Annotated[float | None, Form()] = None,
     session: AsyncSession = Depends(get_session),
     image: StockImageUpdate | None = None,
 ) -> StockResponse:
     """Create a new stock."""
-    ticker = request.ticker.upper().strip()
+    ticker = ticker.upper().strip()
+
+    if initial_price is None:
+        initial_price = settings.stock_base_price
 
     # Validate ticker format
     if not ticker or len(ticker) > 10:
@@ -76,16 +83,16 @@ async def create_stock(
 
     stock = Stock(
         ticker=ticker,
-        title=request.title,
+        title=title,
         image=processed_image,  # pyright: ignore[reportArgumentType]
-        description=request.description,
+        description=description,
     )
     session.add(stock)
 
     # Create initial price event
     initial_event = PriceEvent(
         ticker=ticker,
-        price=max(0.0, request.initial_price),
+        price=max(0.0, initial_price),
         change_type=ChangeType.INITIAL,
     )
     session.add(initial_event)
@@ -93,7 +100,7 @@ async def create_stock(
     await session.commit()
     await session.refresh(stock)
 
-    logger.info("Created stock {} ({})", ticker, request.title)
+    logger.info("Created stock {} ({})", ticker, title)
     return StockResponse.model_validate(stock)
 
 

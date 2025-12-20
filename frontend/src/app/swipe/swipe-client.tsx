@@ -1,69 +1,52 @@
 'use client';
 
-import { Stock } from '@/lib/types';
 import { useEffect, useState, useMemo } from 'react';
 import { motion, useMotionValue, useTransform, animate } from 'framer-motion';
 import Image from 'next/image';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Heart, X, Loader2 } from 'lucide-react';
-import { useFirebase, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, doc, runTransaction, writeBatch, getDocs, WriteBatch } from 'firebase/firestore';
-import { initiateAnonymousSignIn } from '@/firebase/non-blocking-login';
-import { FirestorePermissionError, errorEmitter } from '@/firebase';
+import { useStocks, submitSwipe } from '@/hooks/use-stocks';
+import type { SwipeDirection } from '@/lib/api/client';
 
 /**
  * The main client component for the Swipe Kiosk.
  * This component is the engine of the market, allowing users to influence stock values.
- * It fetches stocks from Firestore, displays them as swipeable cards, and on swipe,
- * runs a Firestore transaction to update the stock's value and history.
- * @returns {JSX.Element} The rendered swipe client component.
+ * It fetches stocks from the API, displays them as swipeable cards, and on swipe,
+ * calls the backend to update the stock's value.
  */
 export default function SwipeClient() {
-  const { firestore, auth, user, isUserLoading } = useFirebase();
+  const { stocks, isLoading, mutate } = useStocks({ random: true });
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isTouchDevice, setIsTouchDevice] = useState(true);
-  
-  // State to hold a stable, shuffled ORDER of stock IDs.
-  const [shuffledIds, setShuffledIds] = useState<string[]>([]);
+  const [swipeToken, setSwipeToken] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const titlesCollection = useMemoFirebase(() => firestore ? collection(firestore, 'titles') : null, [firestore]);
-  const { data: stocks, isLoading: isLoadingStocks } = useCollection<Stock>(titlesCollection);
+  // State to hold a stable, shuffled ORDER of stock tickers
+  const [shuffledTickers, setShuffledTickers] = useState<string[]>([]);
 
-  // Map stocks by ID for efficient lookup. This map always has the latest data.
-  const stocksById = useMemo(() => {
-    if (!stocks) return new Map();
-    return new Map(stocks.map(stock => [stock.id, stock]));
+  // Map stocks by ticker for efficient lookup
+  const stocksByTicker = useMemo(() => {
+    return new Map(stocks.map((stock) => [stock.ticker, stock]));
   }, [stocks]);
 
-
-  // Effect to populate and shuffle the stock IDs only when stocks are added or removed.
+  // Effect to populate and shuffle the stock tickers only when stocks are added or removed
   useEffect(() => {
     if (stocks && stocks.length > 0) {
-      // Only re-shuffle if the set of IDs has actually changed.
-      const currentIds = new Set(shuffledIds);
-      const newIds = new Set(stocks.map(s => s.id));
-      if (currentIds.size !== newIds.size || ![...newIds].every(id => currentIds.has(id))) {
-         setShuffledIds([...stocks].map(s => s.id).sort(() => Math.random() - 0.5));
+      const currentTickers = new Set(shuffledTickers);
+      const newTickers = new Set(stocks.map((s) => s.ticker));
+      if (currentTickers.size !== newTickers.size || ![...newTickers].every((t) => currentTickers.has(t))) {
+        setShuffledTickers([...stocks].map((s) => s.ticker).sort(() => Math.random() - 0.5));
       }
     }
-  }, [stocks]); // Depends on the full stocks array to detect additions/deletions.
+  }, [stocks]);
 
-
-  // Detect if the device has touch capabilities to enable/disable drag gestures.
+  // Detect if the device has touch capabilities
   useEffect(() => {
     setIsTouchDevice('ontouchstart' in window || navigator.maxTouchPoints > 0);
   }, []);
 
-  // Initiate anonymous sign-in if the user is not authenticated.
-  // This is required to have write permissions to Firestore.
-  useEffect(() => {
-    if (!isUserLoading && !user && auth) {
-      initiateAnonymousSignIn(auth);
-    }
-  }, [isUserLoading, user, auth]);
-
-  // Framer Motion values for card animations.
+  // Framer Motion values for card animations
   const x = useMotionValue(0);
   const rotate = useTransform(x, [-200, 200], [-30, 30]);
   const opacity = useTransform(x, [-200, 0, 200], [0.5, 1, 0.5]);
@@ -72,145 +55,52 @@ export default function SwipeClient() {
 
   /**
    * Handles the swipe action, either from a drag gesture or a button click.
-   * It animates the card off-screen and then triggers a Firestore transaction
-   * to update the stock's data.
-   * @param {'left' | 'right'} direction - The direction of the swipe.
+   * It animates the card off-screen and then calls the backend to update the stock.
    */
-  const handleSwipe = (direction: 'left' | 'right') => {
-    if (!firestore || shuffledIds.length === 0) return;
+  const handleSwipe = async (direction: SwipeDirection) => {
+    if (shuffledTickers.length === 0 || isSubmitting) return;
 
-    const stockIdToUpdate = shuffledIds[currentIndex % shuffledIds.length];
-    if (!stockIdToUpdate) return;
-    
+    const tickerToUpdate = shuffledTickers[currentIndex % shuffledTickers.length];
+    if (!tickerToUpdate) return;
+
+    setIsSubmitting(true);
+
     const exitX = direction === 'right' ? 300 : -300;
     animate(x, exitX, {
       duration: 0.3,
       onComplete: async () => {
-        // Now that the animation is done, update the state and reset the card position.
-        setCurrentIndex(prevIndex => prevIndex + 1);
+        setCurrentIndex((prevIndex) => prevIndex + 1);
         x.set(0);
-        
-        const valueChange = direction === 'right' ? 0.1 : -0.1;
-        
+
         try {
-          // Use a Firestore transaction to safely read and write the stock data.
-          // This prevents race conditions if multiple users swipe the same stock at once.
-           await runTransaction(firestore, async (transaction) => {
-              const allDocsSnapshot = await getDocs(collection(firestore, 'titles'));
-              const allStocks = allDocsSnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Stock));
-              
-              // 1. Get current ranks for all stocks before any changes.
-              const stocksSortedByValue = [...allStocks].sort((a,b) => b.currentValue - a.currentValue);
-              const previousRanks = new Map<string, number>();
-              stocksSortedByValue.forEach((stock, index) => {
-                previousRanks.set(stock.id, index + 1);
-              });
-
-              // 2. Find the specific stock we are updating.
-              const currentStockDoc = allStocks.find(s => s.id === stockIdToUpdate);
-              if (!currentStockDoc) {
-                throw "Document does not exist!";
-              }
-              const currentData = currentStockDoc;
-
-              // 3. Calculate all new values for the swiped stock.
-              const now = new Date();
-              const oneMinuteAgo = new Date(now.getTime() - 60 * 1000);
-              const fiveMinutesAgo = new Date(now.getTime() - 5 * 60 * 1000);
-
-              const newValue = currentData.currentValue + valueChange;
-              
-              // 4. Create a list of all stocks with the updated value for the swiped one.
-              const updatedStockListForRanking = allStocks.map(s => 
-                s.id === stockIdToUpdate ? { ...s, currentValue: newValue } : s
-              );
-
-              // 5. Calculate the new ranks for all stocks.
-              const newlySorted = updatedStockListForRanking.sort((a,b) => b.currentValue - a.currentValue);
-              const newRanks = new Map<string, number>();
-              newlySorted.forEach((stock, index) => {
-                newRanks.set(stock.id, index + 1);
-              });
-
-              // 6. Use a batched write to update all documents.
-              const batch = writeBatch(firestore);
-
-              for (const stock of allStocks) {
-                const stockRef = doc(firestore, 'titles', stock.id);
-                let updateData: Partial<Stock> = {
-                  rank: newRanks.get(stock.id),
-                  previousRank: previousRanks.get(stock.id),
-                };
-
-                // If this is the stock that was swiped, add all the detailed value changes.
-                if (stock.id === stockIdToUpdate) {
-                    const newChange = newValue - stock.initialValue;
-                    const newPercentChange = (newChange / stock.initialValue) * 100;
-                    
-                    let newHistory = [...stock.history, { value: newValue, timestamp: now.toISOString() }];
-                    if (newHistory.length > 100) {
-                      newHistory = newHistory.slice(newHistory.length - 100);
-                    }
-
-                    const recentHistory1Min = newHistory.filter((h) => new Date(h.timestamp) > oneMinuteAgo);
-                    const oldestValueInLastMinute = recentHistory1Min.length > 1 ? recentHistory1Min[0].value : stock.currentValue;
-                    const valueChangeLastMinute = newValue - oldestValueInLastMinute;
-
-                    const recentHistory5Min = newHistory.filter((h) => new Date(h.timestamp) > fiveMinutesAgo);
-                    const oldestValueInLast5Minutes = recentHistory5Min.length > 1 ? recentHistory5Min[0].value : stock.currentValue;
-                    const valueChangeLast5Minutes = newValue - oldestValueInLast5Minutes;
-                    const percentChangeLast5Minutes = (valueChangeLast5Minutes / newValue) * 100;
-                    
-                    updateData = {
-                        ...updateData,
-                        currentValue: newValue,
-                        change: newChange,
-                        percentChange: newPercentChange,
-                        valueChangeLastMinute: valueChangeLastMinute,
-                        valueChangeLast5Minutes: valueChangeLast5Minutes,
-                        percentChangeLast5Minutes: percentChangeLast5Minutes,
-                        history: newHistory,
-                    };
-                }
-                
-                batch.update(stockRef, updateData);
-              }
-              
-              await batch.commit();
-           });
-
-        } catch (e) {
-          console.error("Transaction failed: ", e);
-          const stockRef = doc(firestore, 'titles', stockIdToUpdate);
-          // If the transaction fails, create and emit a contextual error.
-          const permissionError = new FirestorePermissionError({
-            path: stockRef.path,
-            operation: 'update',
-            requestResourceData: { valueChange: valueChange }, // Send minimal context
-          });
-          errorEmitter.emit('permission-error', permissionError);
+          const result = await submitSwipe(tickerToUpdate, direction, swipeToken);
+          if (result) {
+            setSwipeToken(result.swipe_token);
+          }
+          // Trigger refetch of stocks
+          mutate();
+        } catch (error) {
+          console.error('Swipe failed:', error);
+        } finally {
+          setIsSubmitting(false);
         }
       },
     });
   };
 
-  // Get the current stock ID from the stable shuffled list, and then get the live data.
+  // Get the current stock from the stable shuffled list
   const currentStock = useMemo(() => {
-    if (shuffledIds.length === 0 || stocksById.size === 0) return null;
-    const currentId = shuffledIds[currentIndex % shuffledIds.length];
-    return stocksById.get(currentId) || null;
-  }, [shuffledIds, currentIndex, stocksById]);
+    if (shuffledTickers.length === 0 || stocksByTicker.size === 0) return null;
+    const currentTicker = shuffledTickers[currentIndex % shuffledTickers.length];
+    return stocksByTicker.get(currentTicker) || null;
+  }, [shuffledTickers, currentIndex, stocksByTicker]);
 
-  const isLoading = isLoadingStocks || isUserLoading;
-
-  if (isLoading && shuffledIds.length === 0) {
-     return (
+  if (isLoading && shuffledTickers.length === 0) {
+    return (
       <div className="text-center flex flex-col items-center gap-4">
         <Loader2 className="w-12 h-12 animate-spin text-primary" />
         <h2 className="text-2xl font-bold">Lade Markt...</h2>
-        <p className="text-muted-foreground">
-          Die neusten Profile werden für dich vorbereitet.
-        </p>
+        <p className="text-muted-foreground">Die neusten Profile werden für dich vorbereitet.</p>
       </div>
     );
   }
@@ -220,17 +110,19 @@ export default function SwipeClient() {
       <div className="text-center">
         <h2 className="text-2xl font-bold">Noch keine Aktien verfügbar!</h2>
         <p className="text-muted-foreground">
-          Geh zur Registrierungsstation, um die erste Aktie zu werden.
+          Geh zur Admin-Seite, um die erste Aktie zu erstellen.
         </p>
       </div>
     );
   }
 
+  const imageUrl = currentStock.image || '/placeholder.png';
+
   return (
     <div className="relative w-full h-full flex flex-col items-center justify-center">
       <div className="relative w-full h-full flex items-center justify-center">
         <motion.div
-          key={currentStock.id}
+          key={currentStock.ticker}
           className="absolute w-[90vw] h-[80vh] max-w-sm max-h-[600px]"
           style={{ x, rotate, opacity, zIndex: 1 }}
           drag={isTouchDevice ? 'x' : false}
@@ -249,8 +141,8 @@ export default function SwipeClient() {
           <Card className="relative w-full h-full overflow-hidden shadow-2xl shadow-black/20">
             <div className="absolute inset-0 w-full h-full">
               <Image
-                src={currentStock.photoUrl}
-                alt={currentStock.nickname}
+                src={imageUrl}
+                alt={currentStock.title}
                 data-ai-hint="person portrait"
                 fill
                 className="object-cover"
@@ -259,56 +151,52 @@ export default function SwipeClient() {
               <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent" />
             </div>
 
-              <>
-                <motion.div
-                  style={{ opacity: likeOpacity }}
-                  className="absolute top-8 left-8 rotate-[-30deg] border-4 border-green-400 text-green-400 text-5xl font-bold p-4 rounded-xl"
-                >
-                  LIKE
-                </motion.div>
-                <motion.div
-                  style={{ opacity: nopeOpacity }}
-                  className="absolute top-8 right-8 rotate-[30deg] border-4 border-red-500 text-red-500 text-5xl font-bold p-4 rounded-xl"
-                >
-                  NOPE
-                </motion.div>
-              </>
+            <>
+              <motion.div
+                style={{ opacity: likeOpacity }}
+                className="absolute top-8 left-8 rotate-[-30deg] border-4 border-green-400 text-green-400 text-5xl font-bold p-4 rounded-xl"
+              >
+                LIKE
+              </motion.div>
+              <motion.div
+                style={{ opacity: nopeOpacity }}
+                className="absolute top-8 right-8 rotate-[30deg] border-4 border-red-500 text-red-500 text-5xl font-bold p-4 rounded-xl"
+              >
+                NOPE
+              </motion.div>
+            </>
 
             <CardContent className="absolute bottom-0 left-0 right-0 p-6 text-white">
               <div className="flex items-baseline gap-4">
-                <h2 className="text-4xl font-bold font-headline">
-                  {currentStock.nickname}
-                </h2>
+                <h2 className="text-4xl font-bold font-headline">{currentStock.title}</h2>
                 <p className="text-2xl font-mono text-green-300">
-                  {currentStock.currentValue.toFixed(2)} CHF
+                  {currentStock.price.toFixed(2)} CHF
                 </p>
               </div>
-              <p className="mt-2 text-lg text-white/80">
-                {currentStock.description}
-              </p>
+              <p className="mt-2 text-lg text-white/80">{currentStock.description}</p>
             </CardContent>
           </Card>
         </motion.div>
       </div>
 
       <div className="flex gap-8 mt-4 z-50 absolute bottom-10">
-          <Button
-            variant="outline"
-            className="w-24 h-24 rounded-full bg-white/10 backdrop-blur-sm border-red-500/50 text-red-500 hover:bg-red-500/20 hover:text-red-400"
-            onClick={() => handleSwipe('left')}
-            disabled={!user}
-          >
-            <X className="w-12 h-12" />
-          </Button>
-          <Button
-            variant="outline"
-            className="w-24 h-24 rounded-full bg-white/10 backdrop-blur-sm border-green-400/50 text-green-400 hover:bg-green-400/20 hover:text-green-300"
-            onClick={() => handleSwipe('right')}
-            disabled={!user}
-          >
-            <Heart className="w-12 h-12" />
-          </Button>
-        </div>
+        <Button
+          variant="outline"
+          className="w-24 h-24 rounded-full bg-white/10 backdrop-blur-sm border-red-500/50 text-red-500 hover:bg-red-500/20 hover:text-red-400"
+          onClick={() => handleSwipe('left')}
+          disabled={isSubmitting}
+        >
+          <X className="w-12 h-12" />
+        </Button>
+        <Button
+          variant="outline"
+          className="w-24 h-24 rounded-full bg-white/10 backdrop-blur-sm border-green-400/50 text-green-400 hover:bg-green-400/20 hover:text-green-300"
+          onClick={() => handleSwipe('right')}
+          disabled={isSubmitting}
+        >
+          <Heart className="w-12 h-12" />
+        </Button>
+      </div>
     </div>
   );
 }

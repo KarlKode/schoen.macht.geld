@@ -1,6 +1,5 @@
 'use client';
 
-import { generateFunnyNewsHeadlinesBatch } from '@/ai/flows/generate-funny-news-headlines';
 import {
   Table,
   TableBody,
@@ -9,106 +8,74 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import type { Stock } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { ArrowDown, ArrowUp, Minus } from 'lucide-react';
-import { useEffect, useState, useMemo, useRef } from 'react';
-import { useFirebase, useCollection, useMemoFirebase } from '@/firebase';
-import { collection } from 'firebase/firestore';
-
+import { useEffect, useState, useMemo } from 'react';
+import { useStocks } from '@/hooks/use-stocks';
+import type { StockResponse } from '@/lib/api/client';
 
 /**
- * A component that displays a scrolling news ticker with AI-generated headlines.
- * It fetches a batch of 5 headlines every 5 minutes and cycles through them.
- * @param {object} props - The component props.
- * @param {Stock[]} props.stocks - The array of current stocks.
- * @returns {JSX.Element} The rendered news ticker component.
+ * A component that displays a scrolling news ticker with stock updates.
+ * It cycles through headlines about the top performing stocks.
  */
-const NewsTicker = ({ stocks }: { stocks: Stock[] }) => {
-  const [headlines, setHeadlines] = useState<string[]>(['Willkommen beim Schön. Macht. Geld. News Network.']);
+const NewsTicker = ({ stocks }: { stocks: StockResponse[] }) => {
   const [headlineIndex, setHeadlineIndex] = useState(0);
-  const [isGenerating, setIsGenerating] = useState(false);
 
-  /**
-   * Fetches a new batch of headlines from the AI flow. It identifies the top 5
-   * "trending" stocks (most volatile) and generates headlines for them.
-   */
-  const fetchHeadlinesBatch = async () => {
-    if (isGenerating || !stocks || stocks.length === 0) return;
-    setIsGenerating(true);
-
-    try {
-      // Find the top 5 stocks with the largest absolute percentage change.
-      const trendingStocks = [...stocks]
-        .sort((a, b) => Math.abs(b.percentChange) - Math.abs(a.percentChange))
-        .slice(0, 5);
-
-      if (trendingStocks.length > 0) {
-        const result = await generateFunnyNewsHeadlinesBatch({
-          stocks: trendingStocks.map(stock => ({
-            stockTicker: stock.ticker,
-            companyName: stock.nickname,
-            description: stock.description,
-            currentValue: stock.currentValue,
-            change: stock.change,
-            percentChange: stock.percentChange,
-          }))
-        });
-        
-        if (result.headlines && result.headlines.length > 0) {
-            setHeadlines(result.headlines);
-            setHeadlineIndex(0); // Reset to the first new headline
-        }
-
-      }
-    } catch (error) {
-      console.error('Failed to generate news headlines batch:', error);
-      setHeadlines(['NEWS: Der Markt hat technische Schwierigkeiten... oder sind es nur Gefühle?']);
-    } finally {
-      setIsGenerating(false);
+  // Generate headlines from top movers
+  const headlines = useMemo(() => {
+    if (!stocks || stocks.length === 0) {
+      return ['Willkommen beim Schön. Macht. Geld. News Network.'];
     }
-  };
 
+    // Find the top stocks with the largest absolute percentage change
+    const topMovers = [...stocks]
+      .sort((a, b) => Math.abs(b.percent_change) - Math.abs(a.percent_change))
+      .slice(0, 5);
 
-  // Set up an interval to fetch a new batch of headlines every 5 minutes.
-  useEffect(() => {
-    const fetchInterval = setInterval(fetchHeadlinesBatch, 300000); // 5 minutes
-    fetchHeadlinesBatch(); // Fetch immediately on mount
-    return () => clearInterval(fetchInterval);
-  }, [stocks]); // Dependency on stocks to re-evaluate if it changes drastically.
+    return topMovers.map((stock) => {
+      const direction = stock.percent_change >= 0 ? 'steigt' : 'fällt';
+      const emoji = stock.percent_change >= 0 ? '📈' : '📉';
+      return `${emoji} ${stock.title} (${stock.ticker}) ${direction} um ${Math.abs(stock.percent_change).toFixed(2)}%`;
+    });
+  }, [stocks]);
 
-  // Set up an interval to cycle through the available headlines.
+  // Cycle through headlines
   useEffect(() => {
     if (headlines.length > 1) {
-        const headlineCycleInterval = setInterval(() => {
-            setHeadlineIndex(prevIndex => (prevIndex + 1) % headlines.length);
-        }, 30000); // Change headline every 30 seconds
-        return () => clearInterval(headlineCycleInterval);
+      const interval = setInterval(() => {
+        setHeadlineIndex((prev) => (prev + 1) % headlines.length);
+      }, 8000);
+      return () => clearInterval(interval);
     }
   }, [headlines]);
 
-  // Use a key on the animated div to force a re-render (and restart the animation) when the headline changes.
   const currentHeadline = headlines[headlineIndex];
 
   return (
     <div className="w-full bg-red-700 text-white h-10 flex items-center overflow-hidden">
-       {currentHeadline && (
-         <div
-            key={currentHeadline} // This is the key!
-            className="flex animate-marquee-fast whitespace-nowrap"
-            style={{ animationDuration: '45s' }}
-          >
-            <span className="text-xl font-bold px-12">{currentHeadline}</span>
-            <span className="text-xl font-bold px-12" aria-hidden="true">{currentHeadline}</span>
+      {currentHeadline && (
+        <div
+          key={currentHeadline}
+          className="flex animate-marquee-fast whitespace-nowrap"
+          style={{ animationDuration: '30s' }}
+        >
+          <span className="text-xl font-bold px-12">{currentHeadline}</span>
+          <span className="text-xl font-bold px-12" aria-hidden="true">
+            {currentHeadline}
+          </span>
         </div>
-       )}
+      )}
       <style jsx>{`
         @keyframes marquee-fast {
-          from { transform: translateX(0%); }
-          to { transform: translateX(-50%); }
+          from {
+            transform: translateX(0%);
+          }
+          to {
+            transform: translateX(-50%);
+          }
         }
         .animate-marquee-fast {
-          animation: marquee-fast 45s linear infinite;
+          animation: marquee-fast 30s linear infinite;
         }
       `}</style>
     </div>
@@ -118,17 +85,22 @@ const NewsTicker = ({ stocks }: { stocks: Stock[] }) => {
 /**
  * The main client component for the Terminal display. It resembles a financial
  * terminal, showing a table of all stocks with their values and changes.
- * It also includes the AI-powered NewsTicker at the bottom.
- * @returns {JSX.Element} The rendered terminal client component.
+ * It also includes a NewsTicker at the bottom.
  */
 export default function TerminalClient() {
-    const { firestore } = useFirebase();
-    const titlesCollection = useMemoFirebase(() => firestore ? collection(firestore, 'titles') : null, [firestore]);
-    const { data: stocks } = useCollection<Stock>(titlesCollection);
-    
-    const sortedStocks = useMemo(() => {
-      return stocks ? [...stocks].sort((a, b) => (a.rank ?? Infinity) - (b.rank ?? Infinity)) : [];
-    }, [stocks]);
+  const { stocks, isLoading } = useStocks();
+
+  const sortedStocks = useMemo(() => {
+    return [...stocks].sort((a, b) => (a.rank ?? Infinity) - (b.rank ?? Infinity));
+  }, [stocks]);
+
+  if (isLoading && stocks.length === 0) {
+    return (
+      <div className="h-full flex items-center justify-center bg-black text-green-400 font-mono">
+        Lade Terminal...
+      </div>
+    );
+  }
 
   return (
     <div className="h-full flex flex-col p-2 bg-black text-green-400 font-mono overflow-hidden">
@@ -141,68 +113,72 @@ export default function TerminalClient() {
             <TableRow className="border-gray-700 hover:bg-gray-900">
               <TableHead className="text-yellow-400 w-12 px-1 h-6 py-0"></TableHead>
               <TableHead className="text-yellow-400 px-1 h-6 py-0">TICKER</TableHead>
-              <TableHead className="text-yellow-400 px-1 h-6 py-0">NICKNAME</TableHead>
+              <TableHead className="text-yellow-400 px-1 h-6 py-0">NAME</TableHead>
               <TableHead className="text-yellow-400 text-right px-1 h-6 py-0">WERT</TableHead>
-              <TableHead className="text-yellow-400 text-right px-1 h-6 py-0">CHG (5M)</TableHead>
-              <TableHead className="text-yellow-400 text-right px-1 h-6 py-0">% CHG (5M)</TableHead>
+              <TableHead className="text-yellow-400 text-right px-1 h-6 py-0">CHG</TableHead>
+              <TableHead className="text-yellow-400 text-right px-1 h-6 py-0">% CHG</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {sortedStocks
-              .map((stock) => {
-                const changeLast5MinPositive = (stock.valueChangeLast5Minutes ?? 0) >= 0;
-                
-                let RankIndicator;
-                if (!stock.rank || !stock.previousRank || stock.rank === stock.previousRank) {
-                  RankIndicator = <Minus className="w-4 h-4 text-gray-600" />;
-                } else if (stock.rank < stock.previousRank) {
-                  RankIndicator = <ArrowUp className="w-4 h-4 text-green-400" />;
-                } else {
-                  RankIndicator = <ArrowDown className="w-4 h-4 text-red-500" />;
-                }
+            {sortedStocks.map((stock) => {
+              const isPositive = stock.change >= 0;
 
-                return (
-                  <TableRow
-                    key={stock.id}
-                    className="border-gray-800 hover:bg-gray-900/50"
+              let RankIndicator;
+              if (!stock.rank || !stock.previous_rank || stock.rank === stock.previous_rank) {
+                RankIndicator = <Minus className="w-4 h-4 text-gray-600" />;
+              } else if (stock.rank < stock.previous_rank) {
+                RankIndicator = <ArrowUp className="w-4 h-4 text-green-400" />;
+              } else {
+                RankIndicator = <ArrowDown className="w-4 h-4 text-red-500" />;
+              }
+
+              return (
+                <TableRow key={stock.ticker} className="border-gray-800 hover:bg-gray-900/50">
+                  <TableCell className="w-12 px-1 py-0">{RankIndicator}</TableCell>
+                  <TableCell className="font-bold px-1 py-0">{stock.ticker}</TableCell>
+                  <TableCell className="px-1 py-0 truncate max-w-xs">{stock.title}</TableCell>
+                  <TableCell
+                    className={cn(
+                      'text-right font-bold px-1 py-0',
+                      isPositive ? 'text-green-400' : 'text-red-500'
+                    )}
                   >
-                    <TableCell className="w-12 px-1 py-0">{RankIndicator}</TableCell>
-                    <TableCell className="font-bold px-1 py-0">{stock.ticker}</TableCell>
-                    <TableCell className="px-1 py-0 truncate max-w-xs">{stock.nickname}</TableCell>
-                    <TableCell
-                      className={cn(
-                        'text-right font-bold px-1 py-0',
-                        stock.change >= 0 ? 'text-green-400' : 'text-red-500'
-                      )}
-                    >
-                      {stock.currentValue.toFixed(2)} CHF
-                    </TableCell>
-                    <TableCell
-                      className={cn(
-                        'text-right px-1 py-0',
-                        (stock.valueChangeLast5Minutes ?? 0) === 0 ? 'text-gray-500' : changeLast5MinPositive ? 'text-green-400' : 'text-red-500'
-                      )}
-                    >
-                      {(stock.valueChangeLast5Minutes ?? 0) >= 0 ? '+' : ''}
-                      {(stock.valueChangeLast5Minutes ?? 0).toFixed(2)}
-                    </TableCell>
-                    <TableCell
-                      className={cn(
-                        'text-right px-1 py-0',
-                         (stock.percentChangeLast5Minutes ?? 0) === 0 ? 'text-gray-500' : changeLast5MinPositive ? 'text-green-400' : 'text-red-500'
-                      )}
-                    >
-                      {(stock.percentChangeLast5Minutes ?? 0) >= 0 ? '+' : ''}
-                      {(stock.percentChangeLast5Minutes ?? 0).toFixed(2)}%
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
+                    {stock.price.toFixed(2)} CHF
+                  </TableCell>
+                  <TableCell
+                    className={cn(
+                      'text-right px-1 py-0',
+                      stock.change === 0
+                        ? 'text-gray-500'
+                        : isPositive
+                          ? 'text-green-400'
+                          : 'text-red-500'
+                    )}
+                  >
+                    {stock.change >= 0 ? '+' : ''}
+                    {stock.change.toFixed(2)}
+                  </TableCell>
+                  <TableCell
+                    className={cn(
+                      'text-right px-1 py-0',
+                      stock.percent_change === 0
+                        ? 'text-gray-500'
+                        : isPositive
+                          ? 'text-green-400'
+                          : 'text-red-500'
+                    )}
+                  >
+                    {stock.percent_change >= 0 ? '+' : ''}
+                    {stock.percent_change.toFixed(2)}%
+                  </TableCell>
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
       </div>
       <div className="mt-auto">
-        <NewsTicker stocks={stocks || []} />
+        <NewsTicker stocks={stocks} />
       </div>
     </div>
   );

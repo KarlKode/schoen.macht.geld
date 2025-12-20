@@ -152,8 +152,8 @@ async def process_image(file: UploadFile) -> UploadFile:
         new_name = Path(original_name).stem + ".jpg"
 
         # Create new UploadFile with compressed data
+
         new_file = UploadFile(file=output, filename=new_name)
-        new_file.content_type = "image/jpeg"
 
         original_size = len(content)
         new_size = output.getbuffer().nbytes

@@ -1,31 +1,23 @@
 'use client';
 
-import type { Stock } from '@/lib/types';
 import { useMemo } from 'react';
-import { useFirebase, useCollection, useMemoFirebase } from '@/firebase';
-import { collection } from 'firebase/firestore';
+import { useStocks } from '@/hooks/use-stocks';
 
 /**
  * A component that displays a horizontally scrolling stock ticker.
- * It fetches real-time stock data from Firestore and animates the prices across the screen.
- * The color and arrow indicator are based on the change in the last minute.
- * @returns {JSX.Element} The rendered stock ticker component.
+ * It fetches real-time stock data and animates the prices across the screen.
  */
 const StockTicker = () => {
-  const { firestore } = useFirebase();
-  const titlesCollection = useMemoFirebase(() => firestore ? collection(firestore, 'titles') : null, [firestore]);
-  const { data: stocks, isLoading } = useCollection<Stock>(titlesCollection);
+  const { stocks, isLoading } = useStocks();
 
-  // The stock list is duplicated to create a seamless looping animation.
+  // The stock list is duplicated to create a seamless looping animation
   const repeatedStocks = useMemo(() => {
     if (!stocks || stocks.length === 0) return [];
-    // Ensure the list is long enough for a seamless loop by repeating it.
     const repeatCount = Math.max(2, Math.ceil(40 / stocks.length));
     return Array(repeatCount).fill(stocks).flat();
   }, [stocks]);
 
-
-  if (isLoading || !stocks) {
+  if (isLoading && stocks.length === 0) {
     return (
       <div className="w-full bg-gray-900 text-white h-full flex items-center justify-center">
         <span className="text-2xl font-mono font-bold text-gray-400">
@@ -36,7 +28,6 @@ const StockTicker = () => {
   }
 
   // Calculate a dynamic animation duration based on the number of items
-  // to maintain a relatively consistent speed.
   const animationDuration = (stocks?.length || 10) * 5;
 
   return (
@@ -46,28 +37,19 @@ const StockTicker = () => {
         style={{ animationDuration: `${animationDuration}s` }}
       >
         {repeatedStocks.map((stock, index) => {
-          const lastChangeIsPositive = stock.valueChangeLastMinute >= 0;
+          const isPositive = stock.change >= 0;
           return (
-            <div
-              key={`${stock.id}-${index}`}
-              className="flex items-center mx-6"
-            >
-              <span className="text-2xl font-mono font-bold text-gray-400">
-                {stock.nickname}
-              </span>
+            <div key={`${stock.ticker}-${index}`} className="flex items-center mx-6">
+              <span className="text-2xl font-mono font-bold text-gray-400">{stock.title}</span>
               <span
                 className={`text-2xl font-mono font-bold ml-3 ${
-                  lastChangeIsPositive ? 'text-green-400' : 'text-red-400'
+                  isPositive ? 'text-green-400' : 'text-red-400'
                 }`}
               >
-                {stock.currentValue.toFixed(2)} CHF
+                {stock.price.toFixed(2)} CHF
               </span>
-              <span
-                className={`ml-2 text-lg ${
-                  lastChangeIsPositive ? 'text-green-400' : 'text-red-400'
-                }`}
-              >
-                {stock.valueChangeLastMinute > 0 ? '▲' : stock.valueChangeLastMinute < 0 ? '▼' : ''}
+              <span className={`ml-2 text-lg ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
+                {stock.change > 0 ? '▲' : stock.change < 0 ? '▼' : ''}
               </span>
             </div>
           );
@@ -92,7 +74,6 @@ const StockTicker = () => {
 
 /**
  * The main page for the stock ticker display.
- * @returns {JSX.Element} The rendered display ticker page.
  */
 export default function DisplayTickerPage() {
   return (
