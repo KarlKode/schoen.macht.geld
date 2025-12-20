@@ -9,7 +9,7 @@ from starlette.requests import Request
 
 from app.config import settings
 from app.models.ai_task import AITask
-from app.models.stock import Stock, StockPrice
+from app.models.stock import Stock, StockPrice, StockSnapshot
 from app.storage import ALLOWED_IMAGE_TYPES, cleanup_old_image
 
 
@@ -35,7 +35,13 @@ class StockAdmin(ModelView, model=Stock):
     column_formatters_detail = {"prices": lambda m, _: [repr(p) for p in m.prices]}  # pyright: ignore[reportUnknownLambdaType, reportUnknownMemberType, reportUnknownArgumentType]
     form_include_pk = True
     form_widget_args = {"image": {"accept": "image/*", "capture": "environment"}}
-    form_excluded_columns = ["prices", "created_at", "updated_at", "ai_tasks"]
+    form_excluded_columns = [
+        "prices",
+        "snapshots",
+        "created_at",
+        "updated_at",
+        "ai_tasks",
+    ]
     can_export = False
 
     _old_image: StorageImage | None = None
@@ -105,6 +111,16 @@ class StockPriceAdmin(ModelView, model=StockPrice):
     can_export = False
 
 
+class StockSnapshotAdmin(ModelView, model=StockSnapshot):
+    column_list = ["id", "ticker", "price", "created_at"]
+    column_sortable_list = ["id", "ticker", "created_at"]
+    column_default_sort = [("created_at", True)]
+    can_create = False
+    can_edit = False
+    can_delete = False
+    can_export = False
+
+
 class AITaskAdmin(ModelView, model=AITask):
     column_list = [
         "id",
@@ -129,5 +145,6 @@ def setup_admin(app: FastAPI, engine: AsyncEngine) -> Admin:
     admin = Admin(app, engine, title="Schoen Macht Geld Admin")
     admin.add_view(StockAdmin)
     admin.add_view(StockPriceAdmin)
+    admin.add_view(StockSnapshotAdmin)
     admin.add_view(AITaskAdmin)
     return admin

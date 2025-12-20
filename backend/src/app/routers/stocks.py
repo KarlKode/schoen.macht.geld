@@ -4,16 +4,17 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query
 from loguru import logger
 from sqlalchemy import func
-from sqlmodel import select
+from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.database import get_session
-from app.models.stock import ChangeType, Stock, StockPrice, limit_prices
+from app.models.stock import ChangeType, Stock, StockPrice, StockSnapshot, limit_prices
 from app.schemas.stock import (
     StockCreate,
     StockImageUpdate,
     StockPriceUpdate,
     StockResponse,
+    StockSnapshotResponse,
 )
 from app.storage import cleanup_old_image, validate_image
 
@@ -169,3 +170,25 @@ async def update_stock_price(
         new_price,
     )
     return StockResponse.model_validate(stock)
+
+
+@router.get("/{ticker}/snapshots")
+async def get_stock_snapshots(
+    ticker: str,
+    limit: Annotated[int, Query(ge=1, le=100)] = 30,
+    session: AsyncSession = Depends(get_session),
+) -> list[StockSnapshotResponse]:
+    """Get price snapshots for graphing."""
+    stock = await session.get(Stock, ticker)
+    if not stock:
+        logger.warning("Stock not found: {}", ticker)
+        raise HTTPException(status_code=404, detail="Stock not found")
+
+    result = await session.exec(
+        select(StockSnapshot)
+        .where(StockSnapshot.ticker == ticker)
+        .order_by(col(StockSnapshot.created_at).desc())
+        .limit(limit)
+    )
+    snapshots = result.all()
+    return [StockSnapshotResponse.model_validate(s) for s in snapshots]

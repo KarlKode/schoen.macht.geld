@@ -45,15 +45,19 @@ data/
 
 ### Stock
 
-| Field       | Type          | Description                           |
-|-------------|---------------|---------------------------------------|
-| ticker      | str           | Primary key (4 chars, e.g. "AAPL")    |
-| title       | str           | Display name                          |
-| image       | StorageImage? | Uploaded image (served at `/images/`) |
-| description | str           | Optional description                  |
-| is_active   | bool          | Whether stock is tradeable            |
-| price       | float         | Current price (from latest StockPrice)|
-| prices      | list          | Price history entries                 |
+| Field             | Type          | Description                              |
+|-------------------|---------------|------------------------------------------|
+| ticker            | str           | Primary key (4 chars, e.g. "AAPL")       |
+| title             | str           | Display name                             |
+| image             | StorageImage? | Uploaded image (served at `/images/`)    |
+| description       | str           | Optional description                     |
+| is_active         | bool          | Whether stock is tradeable               |
+| price             | float         | Current price (from latest StockPrice)   |
+| reference_price   | float?        | Price at last snapshot (for % change)    |
+| reference_price_at| datetime?     | When reference price was set             |
+| percentage_change | float?        | Change from reference price (computed)   |
+| prices            | list          | Price history entries                    |
+| snapshots         | list          | Periodic price snapshots for graphs      |
 
 ### StockPrice
 
@@ -65,6 +69,17 @@ data/
 | change_type | ChangeType | Why the price changed          |
 | created_at  | datetime   | Timestamp                      |
 
+### StockSnapshot
+
+Periodic price snapshots used for line graphs and percentage change calculation.
+
+| Field       | Type     | Description                |
+|-------------|----------|----------------------------|
+| id          | int      | Auto-increment primary key |
+| ticker      | str      | Foreign key to Stock       |
+| price       | float    | Price at snapshot time     |
+| created_at  | datetime | Timestamp                  |
+
 ### ChangeType Enum
 
 - `initial` - Stock creation
@@ -75,16 +90,17 @@ data/
 
 ## API Endpoints
 
-| Method | Path                    | Description              |
-|--------|-------------------------|--------------------------|
-| GET    | /health                 | Health check             |
-| GET    | /stocks/                | List all stocks          |
-| POST   | /stocks/                | Create new stock         |
-| GET    | /stocks/{ticker}        | Get stock by ticker      |
-| POST   | /stocks/{ticker}/image  | Upload stock image       |
-| POST   | /stocks/{ticker}/price  | Manipulate stock price   |
-| POST   | /swipe/                 | Record swipe action      |
-| GET    | /images/{filename}      | Serve uploaded images    |
+| Method | Path                        | Description                    |
+|--------|-----------------------------|--------------------------------|
+| GET    | /health                     | Health check                   |
+| GET    | /stocks/                    | List all stocks                |
+| POST   | /stocks/                    | Create new stock               |
+| GET    | /stocks/{ticker}            | Get stock by ticker            |
+| POST   | /stocks/{ticker}/image      | Upload stock image             |
+| POST   | /stocks/{ticker}/price      | Manipulate stock price         |
+| GET    | /stocks/{ticker}/snapshots  | Get price snapshots for graphs |
+| POST   | /swipe/                     | Record swipe action            |
+| GET    | /images/{filename}          | Serve uploaded images          |
 
 ### List Stocks Query Parameters
 
@@ -157,14 +173,27 @@ Access at `/admin`. Features:
 
 - **Stocks**: View, create, edit, search stocks (supports camera capture on mobile)
 - **Stock Prices**: View price history (read-only)
+- **Stock Snapshots**: View periodic price snapshots (read-only)
 - **AI Tasks**: View AI generation tasks and their status
 
 ## Background Scheduler
 
-When enabled, the scheduler periodically applies random price changes (±5%) to all active stocks. Configure via:
+The scheduler runs several background jobs:
+
+### Price Tick
+Periodically applies random price changes (±5%) to all active stocks.
 
 - `PRICE_TICK_INTERVAL` - Seconds between updates (default: 60)
 - `PRICE_TICK_ENABLED` - Enable/disable (default: true)
+
+### Price Snapshots
+Periodically captures price snapshots for line graphs and percentage change calculation.
+Snapshots are automatically cleaned up to keep only the most recent N per stock.
+
+- `SNAPSHOT_INTERVAL` - Seconds between snapshots (default: 60)
+- `SNAPSHOT_RETENTION` - Number of snapshots to keep per stock (default: 30)
+
+The `percentage_change` field on stocks shows change from the last snapshot (like Yahoo Finance's daily change).
 
 ## AI Content Generation
 
@@ -242,6 +271,8 @@ Environment variables (or `.env` file):
 | STOCK_BASE_PRICE    | 1000.0                               | Default price for new stocks       |
 | PRICE_TICK_INTERVAL | 60                                   | Seconds between random price ticks |
 | PRICE_TICK_ENABLED  | true                                 | Enable background price updates    |
+| SNAPSHOT_INTERVAL   | 60                                   | Seconds between price snapshots    |
+| SNAPSHOT_RETENTION  | 30                                   | Snapshots to keep per stock        |
 | IMAGE_DIR           | ./data/images                        | Directory for uploaded images      |
 | MAX_IMAGE_SIZE      | 5242880                              | Max image upload size (bytes)      |
 | ATLASCLOUD_API_KEY  | (required for AI)                    | AtlasCloud API key                 |

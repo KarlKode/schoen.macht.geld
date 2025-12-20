@@ -18,6 +18,15 @@ class StockPriceResponse(BaseModel):
     created_at: datetime
 
 
+class StockSnapshotResponse(BaseModel):
+    """Price snapshot for graphs."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    price: float
+    created_at: datetime
+
+
 class StockResponse(BaseModel):
     """Stock response matching frontend interface."""
 
@@ -32,6 +41,11 @@ class StockResponse(BaseModel):
     prices: list[StockPriceResponse] = []
     created_at: datetime
     updated_at: datetime
+
+    # Reference price from last snapshot (for percentage change calculation)
+    reference_price: float | None = None
+    reference_price_at: datetime | None = None
+    percentage_change: float | None = None  # Change since last snapshot
 
     @computed_field
     @property
@@ -50,7 +64,7 @@ class StockResponse(BaseModel):
     @computed_field
     @property
     def percent_change(self) -> float:
-        """Percentage change from initial price."""
+        """Percentage change from initial price (total lifetime change)."""
         if self.initial_price == 0:
             return 0.0
         return (self.change / self.initial_price) * 100

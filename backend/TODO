@@ -7,11 +7,29 @@
 * [x] Modify stock admin form to support camera capture
 * [ ] Define "last price" and compute percentage change
 * [ ] Create computed price history (regularly take the current price for all stocks and their movement
+* [ ] Check if PK columns of StockPrice and StockSnapshot are required or if we can use TICKER + timestamp
 * [ ] Rework swipe endpoint
 * [ ] Live feed
 * [ ] Limit prices can be sync
+* [ ] Validate current file size limit
+* [ ] Compress uploaded images if too large (or just in general recompress/resize all uploaded images)
+
+## Polishing
+
+* [ ] Setup
+  * [ ] HTTP server for images & static assets
+  * [ ] Run script for backend
+  * [ ] Document setup, configuration & troubleshooting
+* [ ] Backups?
+* [ ] Benchmark DB
+* [ ]
+
 
 ## AI
+
+### Spending Tracking
+
+* [ ] Display remaining AI credits in webapp
 
 ### News
 
@@ -24,3 +42,11 @@
 
 ## Bugs
 * [x] Random image name generation leads to 404
+
+## Ideas
+
+* [ ] Win/loss for right/let swipe depends on price, randomness (maybe swipe history?)
+* [ ] Initial price is defined by game or something interactive
+* [ ] Random stock movement
+* [ ] Simulate real life stock market events like financial crisis, crash, extreme swings where even right swiping loses money and other situations with the opposite
+* [ ]

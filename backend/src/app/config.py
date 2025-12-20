@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     price_tick_interval: int = 60  # seconds between random price updates
     price_tick_enabled: bool = True
 
+    # Price snapshot settings (for graphs and percentage change)
+    snapshot_interval: int = 60  # seconds between snapshots
+    snapshot_retention: int = 30  # number of snapshots to keep per stock
+
     # Image upload settings
     image_dir: str = "./data/images"
     max_image_size: int = 5 * 1024 * 1024  # 5MB

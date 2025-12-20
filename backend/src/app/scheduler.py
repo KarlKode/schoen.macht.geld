@@ -12,7 +12,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from app.config import settings
 from app.database import async_session_maker
 from app.models.ai_task import AITask, TaskStatus, TaskType
-from app.models.stock import ChangeType, Stock, StockPrice
+from app.models.stock import ChangeType, Stock, StockPrice, StockSnapshot
 from app.services.atlascloud import AtlasCloudError, atlascloud
 
 scheduler = AsyncIOScheduler()
@@ -48,6 +48,79 @@ async def tick_prices() -> None:
 
         await session.commit()
         logger.debug("Ticked prices for {} stocks", len(stocks))
+
+
+async def snapshot_prices() -> None:
+    """Take price snapshots for all active stocks.
+
+    Updates reference_price for percentage change calculation and
+    creates StockSnapshot entries for graph history.
+    """
+    async with async_session_maker() as session:
+        result = await session.exec(select(Stock).where(Stock.is_active == True))  # noqa: E712
+        stocks = result.all()
+
+        if not stocks:
+            logger.debug("No active stocks to snapshot")
+            return
+
+        now = datetime.now(UTC)
+
+        for stock in stocks:
+            # Update reference price for percentage change calculation
+            stock.reference_price = stock.price
+            stock.reference_price_at = now
+            session.add(stock)
+
+            # Create snapshot for graph history
+            snapshot = StockSnapshot(
+                ticker=stock.ticker,
+                price=stock.price,
+            )
+            session.add(snapshot)
+
+        await session.commit()
+        logger.debug("Created snapshots for {} stocks", len(stocks))
+
+        # Cleanup old snapshots
+        await _cleanup_old_snapshots(session)
+
+
+async def _cleanup_old_snapshots(session: AsyncSession) -> None:
+    """Remove snapshots beyond retention limit for each stock."""
+    # Get all unique tickers
+    result = await session.exec(select(StockSnapshot.ticker).distinct())
+    tickers = result.all()
+
+    for ticker in tickers:
+        # Get IDs of snapshots to keep (most recent N)
+        keep_result = await session.exec(
+            select(StockSnapshot.id)
+            .where(StockSnapshot.ticker == ticker)
+            .order_by(col(StockSnapshot.created_at).desc())
+            .limit(settings.snapshot_retention)
+        )
+        keep_ids = set(keep_result.all())
+
+        if not keep_ids:
+            continue
+
+        # Get all snapshot IDs for this ticker
+        all_result = await session.exec(
+            select(StockSnapshot.id).where(StockSnapshot.ticker == ticker)
+        )
+        all_ids = set(all_result.all())
+
+        # Delete IDs that are not in keep_ids
+        delete_ids = all_ids - keep_ids
+        if delete_ids:
+            for snapshot_id in delete_ids:
+                snapshot = await session.get(StockSnapshot, snapshot_id)
+                if snapshot:
+                    await session.delete(snapshot)
+
+            await session.commit()
+            logger.debug("Cleaned up {} old snapshots for {}", len(delete_ids), ticker)
 
 
 async def process_ai_tasks() -> None:
@@ -205,6 +278,20 @@ def start_scheduler() -> None:
         logger.info(
             "Started price tick scheduler (interval: {}s)", settings.price_tick_interval
         )
+
+    # Price snapshots for graphs and percentage change
+    _ = scheduler.add_job(  # pyright: ignore[reportUnknownMemberType]
+        snapshot_prices,
+        "interval",
+        seconds=settings.snapshot_interval,
+        id="price_snapshot",
+        replace_existing=True,
+    )
+    logger.info(
+        "Started snapshot scheduler (interval: {}s, retention: {})",
+        settings.snapshot_interval,
+        settings.snapshot_retention,
+    )
 
     # AI task processor - always enabled if API key is set
     if settings.atlascloud_api_key:

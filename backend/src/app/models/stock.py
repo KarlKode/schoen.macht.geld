@@ -42,6 +42,23 @@ class StockPrice(SQLModel, table=True):
         return f"<StockPrice #{self.id} ({self.ticker})>"
 
 
+class StockSnapshot(SQLModel, table=True):
+    """Periodic price snapshot for graphs and percentage change calculation."""
+
+    __tablename__ = "stock_snapshot"  # pyright: ignore[reportAssignmentType]
+
+    id: int | None = Field(default=None, primary_key=True)
+    ticker: str = Field(foreign_key="stock.ticker", index=True)
+    price: float
+    created_at: datetime = Field(default_factory=partial(datetime.now, UTC))
+
+    stock: "Stock" = Relationship(back_populates="snapshots")  # pyright: ignore[reportAny]  # noqa: UP037
+
+    @override
+    def __repr__(self) -> str:
+        return f"<StockSnapshot #{self.id} ({self.ticker}) {self.price}>"
+
+
 class Stock(SQLModel, table=True):
     """Stock database model."""
 
@@ -54,6 +71,10 @@ class Stock(SQLModel, table=True):
     description: str = ""
     is_active: bool = Field(default=True)
 
+    # Reference price for percentage change calculation (set by snapshot job)
+    reference_price: float | None = Field(default=None)
+    reference_price_at: datetime | None = Field(default=None)
+
     created_at: datetime = Field(default_factory=partial(datetime.now, UTC))
     updated_at: datetime = Field(default_factory=partial(datetime.now, UTC))
 
@@ -62,6 +83,14 @@ class Stock(SQLModel, table=True):
         sa_relationship_kwargs={
             "lazy": "selectin",
             "order_by": "StockPrice.created_at.desc()",
+        },
+    )
+
+    snapshots: list[StockSnapshot] = Relationship(  # pyright: ignore[reportAny]
+        back_populates="stock",
+        sa_relationship_kwargs={
+            "lazy": "selectin",
+            "order_by": "StockSnapshot.created_at.desc()",
         },
     )
 
@@ -77,6 +106,13 @@ class Stock(SQLModel, table=True):
         if self.prices:
             return self.prices[0].price
         return settings.stock_base_price
+
+    @property
+    def percentage_change(self) -> float | None:
+        """Calculate percentage change from reference price."""
+        if self.reference_price is None or self.reference_price == 0:
+            return None
+        return ((self.price - self.reference_price) / self.reference_price) * 100
 
 
 async def limit_prices(s: Stock) -> Stock:
