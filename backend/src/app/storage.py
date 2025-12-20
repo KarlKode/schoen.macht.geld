@@ -1,17 +1,32 @@
-"""Custom file storage with validation and unique filenames."""
+"""Custom file storage with validation and image processing."""
 
+from io import BytesIO
 from pathlib import Path
 
+import pillow_heif  # pyright: ignore[reportMissingTypeStubs]
 from fastapi import HTTPException, UploadFile
 from fastapi_storages import (  # pyright: ignore[reportMissingTypeStubs]
     FileSystemStorage,
     StorageImage,
 )
 from loguru import logger
+from PIL import Image
 
 from app.config import settings
 
-ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
+# Register HEIF/HEIC support with Pillow
+pillow_heif.register_heif_opener()  # pyright: ignore[reportUnknownMemberType]
+
+ALLOWED_IMAGE_TYPES = {
+    "image/jpeg",
+    "image/png",
+    "image/gif",
+    "image/webp",
+    "image/avif",
+    "image/heic",
+    "image/heif",
+    "image/bmp",
+}
 
 
 class NonOverwritingFileSystemStorage(FileSystemStorage):
@@ -84,6 +99,77 @@ def validate_image(file: UploadFile) -> None:
     """
     validate_image_type(file)
     validate_image_size(file)
+
+
+async def process_image(file: UploadFile) -> UploadFile:
+    """Process image: resize if too large, compress as JPEG.
+
+    Args:
+        file: The uploaded image file
+
+    Returns:
+        Processed UploadFile (may be the same file if no processing needed)
+    """
+    try:
+        # Read image data
+        content = await file.read()
+        await file.seek(0)
+
+        # Open with Pillow
+        img = Image.open(BytesIO(content))
+
+        # Convert to RGB if necessary (for JPEG output)
+        if img.mode in ("RGBA", "LA", "P"):
+            # Create white background for transparent images
+            background = Image.new("RGB", img.size, (255, 255, 255))
+            if img.mode == "P":
+                img = img.convert("RGBA")
+            background.paste(img, mask=img.split()[-1] if img.mode == "RGBA" else None)
+            img = background
+        elif img.mode != "RGB":
+            img = img.convert("RGB")
+
+        # Resize if larger than max dimension
+        max_dim = settings.image_max_dimension
+        if img.width > max_dim or img.height > max_dim:
+            img.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
+            logger.debug(
+                "Resized image from {}x{} to {}x{}",
+                content[:10],  # dummy, actual size not available here
+                img.width,
+                img.height,
+            )
+
+        # Compress as JPEG
+        output = BytesIO()
+        img.save(output, format="JPEG", quality=settings.image_quality, optimize=True)
+        _ = output.seek(0)
+
+        # Get original filename and change extension to .jpg
+        original_name = file.filename or "image.jpg"
+        new_name = Path(original_name).stem + ".jpg"
+
+        # Create new UploadFile with compressed data
+        new_file = UploadFile(file=output, filename=new_name)
+        new_file.content_type = "image/jpeg"
+
+        original_size = len(content)
+        new_size = output.getbuffer().nbytes
+        logger.info(
+            "Processed image: {} -> {} ({:.1f}KB -> {:.1f}KB, {:.0f}% reduction)",
+            original_name,
+            new_name,
+            original_size / 1024,
+            new_size / 1024,
+            (1 - new_size / original_size) * 100 if original_size > 0 else 0,
+        )
+
+        return new_file
+
+    except Exception as e:
+        logger.warning("Failed to process image, using original: {}", e)
+        await file.seek(0)
+        return file
 
 
 def delete_image(image: StorageImage | str | None) -> bool:

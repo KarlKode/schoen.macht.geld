@@ -12,6 +12,7 @@ dependencies = [
     "fastapi-storages>=0.3.0",
     "loguru>=0.7.3",
     "pillow>=12.0.0",
+    "pillow-heif>=0.21.0",
     "pydantic-settings>=2.12.0",
     "sqladmin>=0.22.0",
     "sqlmodel>=0.0.27",

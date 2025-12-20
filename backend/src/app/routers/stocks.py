@@ -23,7 +23,7 @@ from app.schemas.stock import (
     StockResponse,
     StockSnapshotResponse,
 )
-from app.storage import cleanup_old_image, validate_image
+from app.storage import cleanup_old_image, process_image, validate_image
 
 router = APIRouter()
 
@@ -66,14 +66,16 @@ async def create_stock(
         logger.warning("Ticker {} already exists", ticker)
         raise HTTPException(status_code=400, detail=f"Ticker {ticker} already exists")
 
-    # Validate image if provided
+    # Validate and process image if provided
+    processed_image = None
     if image:
         validate_image(image)
+        processed_image = await process_image(image)
 
     stock = Stock(
         ticker=ticker,
         title=request.title,
-        image=image,  # pyright: ignore[reportArgumentType]
+        image=processed_image,  # pyright: ignore[reportArgumentType]
         description=request.description,
     )
     session.add(stock)
@@ -117,12 +119,13 @@ async def upload_stock_image(
         logger.warning("Stock not found: {}", ticker)
         raise HTTPException(status_code=404, detail="Stock not found")
 
-    # Validate image
+    # Validate and process image
     validate_image(image)
+    processed_image = await process_image(image)
 
     # Clean up old image before replacing
     old_image = stock.image
-    stock.image = image  # pyright: ignore[reportAttributeAccessIssue]
+    stock.image = processed_image  # pyright: ignore[reportAttributeAccessIssue]
 
     # Save stock
     stock.updated_at = datetime.now(UTC)

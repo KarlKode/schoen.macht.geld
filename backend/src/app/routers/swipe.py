@@ -6,37 +6,42 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.database import get_session
 from app.models.stock import ChangeType, PriceEvent, Stock
-from app.schemas.stock import StockResponse, SwipeRequest
+from app.schemas.stock import SwipeDirection, SwipeRequest, SwipeResponse
+from app.swipe_token import SwipeToken, calculate_price_delta
 
 router = APIRouter()
-
-SWIPE_VALUE = 0.1  # Value change per swipe
 
 
 @router.post("/")
 async def swipe(
     request: SwipeRequest, session: AsyncSession = Depends(get_session)
-) -> StockResponse:
+) -> SwipeResponse:
     """Record a swipe and update stock value."""
     stock = await session.get(Stock, request.ticker)
     if not stock:
         logger.warning("Swipe on unknown ticker: {}", request.ticker)
         raise HTTPException(status_code=404, detail="Stock not found")
 
-    # Calculate value change and determine change type
-    if request.direction == "right":
-        delta = SWIPE_VALUE
-        change_type = ChangeType.SWIPE_UP
-    elif request.direction == "left":
-        delta = -SWIPE_VALUE
-        change_type = ChangeType.SWIPE_DOWN
-    else:
-        raise HTTPException(
-            status_code=400, detail="Direction must be 'left' or 'right'"
-        )
+    # Decode/create swipe token and update with this swipe
+    token = SwipeToken.decode(request.swipe_token)
+    direction = request.direction.value
+    token.update(direction)
+
+    # Analyze swipe history for price modifiers
+    stats = token.analyze()
+
+    # Calculate price delta based on direction and user stats
+    delta = calculate_price_delta(stock.price, direction, stats)
 
     # Calculate new price (enforce >= 0)
     new_price = max(0.0, stock.price + delta)
+
+    # Determine change type
+    change_type = (
+        ChangeType.SWIPE_UP
+        if request.direction == SwipeDirection.RIGHT
+        else ChangeType.SWIPE_DOWN
+    )
 
     # Record price event
     price_event = PriceEvent(
@@ -49,7 +54,20 @@ async def swipe(
     stock.updated_at = datetime.now(UTC)
     session.add(stock)
     await session.commit()
-    await session.refresh(stock)
 
-    logger.debug("{} {} -> {:.2f}", request.ticker, request.direction, new_price)
-    return StockResponse.model_validate(stock)
+    logger.debug(
+        "{} {} -> {:.2f} (delta: {:.2f}, streak: {}, pickiness: {:.2f})",
+        request.ticker,
+        direction,
+        new_price,
+        delta,
+        stats.streak_length,
+        stats.pickiness_ratio,
+    )
+
+    return SwipeResponse(
+        ticker=stock.ticker,
+        new_price=new_price,
+        delta=delta,
+        swipe_token=token.encode(),
+    )

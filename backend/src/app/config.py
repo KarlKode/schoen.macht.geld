@@ -25,7 +25,9 @@ class Settings(BaseSettings):
 
     # Image upload settings
     image_dir: str = "./data/images"
-    max_image_size: int = 5 * 1024 * 1024  # 5MB
+    max_image_size: int = 20 * 1024 * 1024  # 20MB
+    image_max_dimension: int = 1920  # Max width/height after resize
+    image_quality: int = 85  # JPEG compression quality (1-100)
 
     # AtlasCloud AI settings
     atlascloud_api_key: str = ""
@@ -40,6 +42,16 @@ class Settings(BaseSettings):
     # AI task processing
     ai_task_poll_interval: int = 10  # seconds between polling for AI task status
     ai_task_timeout: int = 300  # max seconds to wait for AI task completion
+
+    # Swipe settings
+    swipe_bucket_duration: int = 20  # seconds per bucket
+    swipe_bucket_count: int = 30  # number of buckets (~10 min with 20s buckets)
+    swipe_base_percent_min: float = 0.01  # 1% minimum base change
+    swipe_base_percent_max: float = 0.03  # 3% maximum base change
+    swipe_random_multiplier_min: float = 0.5
+    swipe_random_multiplier_max: float = 2.0
+    swipe_streak_threshold: int = 5  # consecutive same-direction to trigger penalty
+    swipe_streak_penalty: float = 0.7  # multiplier when streak detected
 
 
 settings = Settings()

@@ -1,4 +1,5 @@
 from datetime import datetime
+from enum import Enum
 
 from fastapi import UploadFile
 from pydantic import BaseModel, ConfigDict, computed_field
@@ -99,8 +100,25 @@ class StockImageUpdate(UploadFile):
     pass
 
 
+class SwipeDirection(str, Enum):
+    """Swipe direction."""
+
+    LEFT = "left"
+    RIGHT = "right"
+
+
 class SwipeRequest(BaseModel):
     """Schema for a swipe action."""
 
     ticker: str
-    direction: str  # "left" or "right"
+    direction: SwipeDirection
+    swipe_token: str | None = None  # Token from previous swipe response
+
+
+class SwipeResponse(BaseModel):
+    """Response after a swipe action."""
+
+    ticker: str
+    new_price: float
+    delta: float  # actual change applied
+    swipe_token: str  # token for next request

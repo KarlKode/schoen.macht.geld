@@ -30,7 +30,7 @@ src/app/
    main.py           # Application entry point
    config.py         # Settings (env vars)
    database.py       # SQLite async connection
-   storage.py        # Image storage with validation & unique filenames
+   storage.py        # Image storage with validation & compression
    scheduler.py      # Background price tick scheduler
    admin.py          # Admin panel configuration
    models/           # SQLModel database models
@@ -108,7 +108,7 @@ Periodic price snapshots used for line graphs and percentage change calculation.
 | POST   | /stocks/{ticker}/price      | Manipulate stock price         |
 | GET    | /stocks/{ticker}/snapshots  | Get price snapshots for graphs |
 | GET    | /stocks/{ticker}/events     | Get price change event log     |
-| POST   | /swipe/                     | Record swipe action            |
+| POST   | /swipe/                     | Record swipe action (with token)|
 | GET    | /images/{filename}          | Serve uploaded images          |
 
 ### List Stocks Query Parameters
@@ -152,17 +152,20 @@ Images are stored locally in `./data/images/` and served at `/images/{filename}`
 
 ### Validation
 
-- **Allowed types**: JPEG, PNG, GIF, WebP
-- **Max size**: 5MB (configurable via `MAX_IMAGE_SIZE`)
+- **Allowed types**: JPEG, PNG, GIF, WebP, AVIF, HEIC/HEIF, BMP
+- **Max size**: 20MB (configurable via `MAX_IMAGE_SIZE`)
 
-### Unique Filenames
+HEIC/HEIF support is provided by `pillow-heif` for iPhone photos.
 
-Uploaded files are prefixed with a 12-character UUID to prevent collisions:
-```
-a1b2c3d4e5f6_original_filename.jpg
-```
+### Automatic Compression
 
-This allows different stocks to upload files with the same original name without overwriting each other.
+All uploaded images are automatically processed:
+
+1. **Resize**: Images larger than 1920px (configurable) are resized to fit
+2. **Convert**: All formats converted to JPEG for optimal compression
+3. **Compress**: JPEG quality 85% (configurable) with optimization
+
+This typically reduces file sizes by 50-90%, e.g., a 5MB phone photo → ~200KB.
 
 ### Old Image Cleanup
 
@@ -174,6 +177,75 @@ When replacing a stock's image (via API or admin panel), the old image file is a
 curl -X POST http://localhost:8000/stocks/APPL/price \
   -H "Content-Type: application/json" \
   -d '{"delta": 5.0, "change_type": "admin"}'
+```
+
+## Swipe Endpoint
+
+The swipe endpoint uses a stateless token system to track user behavior without requiring login or session storage.
+
+### Request
+
+```bash
+curl -X POST http://localhost:8000/swipe/ \
+  -H "Content-Type: application/json" \
+  -d '{"ticker": "APPL", "direction": "right", "swipe_token": null}'
+```
+
+| Field        | Type        | Description                          |
+|--------------|-------------|--------------------------------------|
+| ticker       | str         | Stock ticker to swipe on             |
+| direction    | "left"/"right" | Swipe direction                   |
+| swipe_token  | str?        | Token from previous response (or null)|
+
+### Response
+
+```json
+{
+  "ticker": "APPL",
+  "new_price": 1025.50,
+  "delta": 25.50,
+  "swipe_token": "eyJ0cyI6MTcwMzAwMTIzNCwiYnVja2V0cyI6W1sxLDBdXX0="
+}
+```
+
+| Field        | Type  | Description                     |
+|--------------|-------|---------------------------------|
+| ticker       | str   | Stock ticker                    |
+| new_price    | float | Price after swipe               |
+| delta        | float | Actual price change applied     |
+| swipe_token  | str   | Token to send with next request |
+
+### How Swipe Tokens Work
+
+The token is a base64-encoded JSON containing bucketed swipe history:
+
+```json
+{
+  "ts": 1703001234,
+  "buckets": [[3, 1], [2, 4], [0, 0], ...]
+}
+```
+
+- `ts`: Timestamp of last update
+- `buckets`: Array of `[left_count, right_count]` per time interval
+
+The frontend stores the token and sends it with each swipe. The backend uses this to:
+
+1. **Track streaks**: Consecutive same-direction swipes reduce impact
+2. **Measure pickiness**: Users who swipe left often get bonus on right swipes
+3. **Expire old data**: Buckets shift over time, old data drops off
+
+### Price Calculation
+
+Price changes use a hybrid approach:
+
+```
+base_change = current_price * random(1-3%)
+modifiers:
+  - streak_penalty: 0.7x if 5+ consecutive same direction
+  - pickiness_bonus: up to 1.5x for picky users (many left swipes)
+  - random_multiplier: 0.5x to 2.0x
+final_delta = base_change * modifiers * direction
 ```
 
 ## Admin Panel
@@ -290,13 +362,23 @@ Environment variables (or `.env` file):
 | SNAPSHOT_INTERVAL   | 60                                   | Seconds between price snapshots    |
 | SNAPSHOT_RETENTION  | 30                                   | Snapshots to keep per stock        |
 | IMAGE_DIR           | ./data/images                        | Directory for uploaded images      |
-| MAX_IMAGE_SIZE      | 5242880                              | Max image upload size (bytes)      |
+| MAX_IMAGE_SIZE      | 20971520                             | Max image upload size (bytes)      |
+| IMAGE_MAX_DIMENSION | 1920                                 | Max width/height after resize      |
+| IMAGE_QUALITY       | 85                                   | JPEG compression quality (1-100)   |
 | ATLASCLOUD_API_KEY  | (required for AI)                    | AtlasCloud API key                 |
 | ATLASCLOUD_TEXT_MODEL | google/gemini-3-flash-preview-developer | Text generation model     |
 | ATLASCLOUD_IMAGE_MODEL | black-forest-labs/flux-schnell    | Image generation model             |
 | ATLASCLOUD_VIDEO_T2V_MODEL | alibaba/wan-2.2/t2v-480p-ultra-fast | Text-to-video model        |
 | AI_TASK_POLL_INTERVAL | 10                                 | Seconds between AI task polls      |
 | AI_TASK_TIMEOUT     | 300                                  | Max seconds for AI task completion |
+| SWIPE_BUCKET_DURATION | 20                                 | Seconds per swipe history bucket   |
+| SWIPE_BUCKET_COUNT  | 30                                   | Number of buckets (~10 min history)|
+| SWIPE_BASE_PERCENT_MIN | 0.01                              | Min base price change (1%)         |
+| SWIPE_BASE_PERCENT_MAX | 0.03                              | Max base price change (3%)         |
+| SWIPE_RANDOM_MULTIPLIER_MIN | 0.5                         | Min random multiplier              |
+| SWIPE_RANDOM_MULTIPLIER_MAX | 2.0                         | Max random multiplier              |
+| SWIPE_STREAK_THRESHOLD | 5                                 | Buckets for streak detection       |
+| SWIPE_STREAK_PENALTY | 0.7                                 | Multiplier when streak detected    |
 
 ## Development
 
@@ -347,8 +429,8 @@ The following changes need to be made in the frontend:
 - `POST /stocks/{ticker}/image` - Upload stock image file
   - Content-Type: `multipart/form-data`
   - Field: `image` (image file)
-  - Allowed types: JPEG, PNG, GIF, WebP
-  - Max size: 5MB
+  - Allowed types: JPEG, PNG, GIF, WebP, AVIF, HEIC/HEIF, BMP
+  - Max size: 20MB
   - Returns: Stock with `image` path (served at `/images/`)
 
 - `POST /stocks/{ticker}/price` - Manipulate stock price
