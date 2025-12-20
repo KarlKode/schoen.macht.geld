@@ -1,71 +1,261 @@
-# Schön. Macht. Geld. - The Ultimate Stock Market Party Game
+# Schön. Macht. Geld.
 
-Welcome to the repository for "Schön. Macht. Geld.", an interactive party game where guests become publicly traded "stocks." Their market value is influenced in real-time by other guests through a simple, engaging swiping interface. This project is built as a modern web application designed to run on specific hardware setups within a party environment.
+A satirical stock market party game where guests become publicly traded "stocks." Their market value fluctuates in real-time based on swipes from other guests.
 
 ## The Concept
 
-The game turns party guests into living assets on a speculative market.
+1. **Become a Stock:** A guest registers at a kiosk with a nickname and photo, becoming a tradeable "stock" with an initial value.
+2. **Influence the Market:** Other guests swipe right (like) or left (dislike) on profiles, directly affecting stock prices.
+3. **Live Market Data:** Display screens show real-time tickers, leaderboards, market maps, and AI-generated satirical news headlines.
 
-1.  **Become a Stock:** A guest registers at a dedicated kiosk, gives themselves a nickname, and takes a live photo. They are now a "stock" on the party's stock exchange, starting with an initial value.
-2.  **Influence the Market:** Other guests use touchscreen "swipe kiosks" to view the profiles of the registered stocks. Swiping right ("Like") increases a stock's value, while swiping left ("Dislike") decreases it.
-3.  **Live Market Data:** Throughout the venue, large display screens show real-time market data, including a live stock ticker, a market overview, a leaderboard of the top-performing stocks, and an AI-generated news feed with satirical headlines about the market's activity.
+The theme is a satirical take on finance culture, vanity, and social climbing within a hedonistic party setting. Created by the "Verein für ambitionierten Konsum (VAK)" and "Amphitheater" Zürich.
 
-The theme is a satirical take on finance culture, vanity, and social climbing, all within a hedonistic party setting.
+## Quick Start
 
----
+```bash
+# Clone and configure
+git clone <repo-url>
+cd schoen.macht.geld
+cp backend/.env.example backend/.env
+# Edit backend/.env with your API keys
 
-## Application Interfaces & Hardware Targets
-
-The application is a single Next.js project but is comprised of three distinct interfaces, each designed for a specific type of hardware:
-
-1.  **Registration Kiosk (`/register`)**
-    *   **Purpose:** Where users create their stock profile with a nickname and a live photo. It also serves as an admin panel for managing stocks.
-    *   **Target Hardware:** A tablet with a front-facing camera.
-
-2.  **Swipe Kiosk (`/swipe`)**
-    *   **Purpose:** Where guests can anonymously "like" (swipe right) or "dislike" (swipe left) profiles, directly influencing their stock value.
-    *   **Target Hardware:** A touchscreen device (e.g., a phone or small tablet).
-
-3.  **Display Screens (`/display/*`)**
-    *   **Purpose:** A set of live dashboards for projectors or large screens, showing market data. This is a view-only interface with no input capabilities.
-    *   **Target Hardware:** Low-power devices like a **Raspberry Pi Zero 2 W** connected to screens. The client-side logic for these views must be lightweight to ensure smooth performance.
-
----
-
-## Technical Stack
-
-*   **Framework:** Next.js with App Router
-*   **Language:** TypeScript
-*   **Styling:** Tailwind CSS with ShadCN UI components
-*   **Database:** Firebase Firestore (used as the real-time backend)
-*   **Authentication:** Firebase Anonymous Authentication (for write permissions from kiosks)
-*   **Generative AI:** Google AI (Gemini) via Genkit for profile descriptions and news headlines
-
----
-
-## Architecture & Contribution Guide
-
-This project was rapidly prototyped and, while functional, has key areas for improvement. Contributors should be aware of the current architecture and its limitations.
-
-### Current State: Direct Client-to-Database Communication
-
-The application currently operates without a dedicated backend API layer. All three client interfaces (Registration, Swipe, Display) communicate **directly with the Firebase Firestore database** using the Firebase client-side SDK.
-
-*   **Pros:** This architecture allows for rapid development and leverages Firestore's excellent real-time capabilities, which is perfect for the live display screens.
-*   **Cons & The "Missing Piece":** As you correctly pointed out, this is not a scalable or secure long-term solution. A robust application would have a dedicated API service that sits between the clients and the database. The clients would make requests to the API (e.g., `POST /api/swipe`), and the API would handle all the business logic and database interaction.
-
-### Opportunities for Contribution (Future Work)
-
-The most significant area for improvement is to refactor the application to use a proper backend API, addressing the "single source of truth" concern more robustly.
-
-1.  **Implement a Backend API:**
-    *   The highest-impact change would be to create a dedicated backend service (e.g., using Node.js/Express, or Cloud Functions for Firebase).
-    *   This API would expose endpoints like `POST /register`, `POST /swipe`, and `GET /stocks`.
-    *   All database logic currently found in the client components (especially the transaction in `src/app/swipe/swipe-client.tsx`) should be moved into this API layer.
-
-2.  **Refactor Clients to Use the API:**
-    *   Once the API is in place, the frontend components should be updated to make `fetch` requests to the new API endpoints instead of communicating directly with Firestore.
-    *   The Display clients would likely switch from direct Firestore listeners to a WebSocket connection or server-sent events (SSE) from the new backend to maintain real-time updates.
-
-By making these changes, we can achieve better security (clients no longer need direct database write access), improved scalability, and a clearer separation of concerns between the frontend and backend.
+# Start all services
+docker compose up -d
 ```
+
+Access at http://localhost:8080 (or configure ports in `docker-compose.yml`)
+
+**Seed demo data (optional):**
+
+```bash
+# Run seed script against running backend
+curl -X POST http://localhost:8080/api/stocks/ \
+  -F 'ticker=DEMO' \
+  -F 'title=Demo Stock' \
+  -F 'initial_price=100'
+```
+
+Or use the admin panel at http://localhost:8080/admin/
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                         Caddy                                │
+│                   (Reverse Proxy + TLS)                      │
+│                      Port 80/443                             │
+└──────────┬────────────────────────────────┬─────────────────┘
+           │                                │
+           │ /api/*                         │ /*
+           ▼                                ▼
+┌──────────────────────┐          ┌──────────────────────┐
+│       Backend        │          │      Frontend        │
+│   (FastAPI/Python)   │          │   (Next.js/React)    │
+│      Port 8000       │          │      Port 3000       │
+└──────────┬───────────┘          └──────────────────────┘
+           │
+           ▼
+┌──────────────────────┐
+│   SQLite Database    │
+│   + Image Storage    │
+└──────────────────────┘
+```
+
+## Interfaces
+
+| Route | Purpose | Target Hardware |
+|-------|---------|-----------------|
+| `/swipe` | Swipe voting interface | Touchscreen phones/tablets |
+| `/display` | Stock ticker | Large screens / Raspberry Pi |
+| `/display/leaderboard` | Top stocks ranking | Large screens |
+| `/display/market-map` | Visual market overview | Large screens |
+| `/display/stock-chart` | Price history charts | Large screens |
+| `/display/terminal` | News ticker + headlines | Large screens |
+| `/admin/` | Stock management | Any browser |
+
+## Tech Stack
+
+- **Frontend:** Next.js 15, React 18, TypeScript, Tailwind CSS, ShadCN UI, SWR
+- **Backend:** FastAPI, SQLModel, SQLite, APScheduler
+- **AI:** AtlasCloud API (text/image/video), Google AI (fallback)
+- **Infrastructure:** Docker Compose, Caddy (reverse proxy + auto-HTTPS)
+
+## Development
+
+### Backend
+
+```bash
+cd backend
+cp .env.example .env
+uv sync
+PYTHONPATH=src uv run uvicorn app.main:app --reload
+```
+
+API docs at http://localhost:8000/docs, Admin at http://localhost:8000/admin/
+
+### Frontend
+
+```bash
+cd frontend
+pnpm install
+NEXT_PUBLIC_API_URL=http://localhost:8000 pnpm dev
+```
+
+Runs at http://localhost:3000
+
+### Regenerate API Client
+
+After backend API changes:
+
+```bash
+cd frontend
+pnpm generate-api
+```
+
+## Production Deployment
+
+### Docker Compose
+
+```bash
+# Build and start
+docker compose up -d
+
+# View logs
+docker compose logs -f
+
+# Rebuild after changes
+docker compose build && docker compose up -d
+
+# Stop
+docker compose down
+```
+
+Services:
+- **backend** - FastAPI on port 8000 (internal)
+- **frontend** - Next.js on port 3000 (internal)
+- **caddy** - Reverse proxy on ports 80/443
+- **backup** - SQLite snapshots every 10 minutes
+
+### Custom Domain with HTTPS
+
+Edit `Caddyfile`:
+
+```
+smg.example.com {
+    handle /images/* {
+        root * /srv
+        file_server
+    }
+    handle /api/* {
+        uri strip_prefix /api
+        reverse_proxy backend:8000
+    }
+    handle /admin/* {
+        reverse_proxy backend:8000
+    }
+    handle /docs {
+        reverse_proxy backend:8000
+    }
+    handle /health {
+        reverse_proxy backend:8000
+    }
+    handle {
+        reverse_proxy frontend:3000
+    }
+}
+```
+
+Caddy automatically provisions Let's Encrypt certificates.
+
+### Auto-start on Boot
+
+Docker handles restarts automatically (`restart: unless-stopped`). Ensure Docker starts on boot:
+
+```bash
+# Linux
+sudo systemctl enable docker
+
+# macOS/Windows - Docker Desktop starts automatically
+```
+
+### Backup & Recovery
+
+The backup container creates consistent SQLite snapshots every 10 minutes:
+
+```
+./backend/data/          →  ./backend/backups/
+├── stocks.db                ├── stocks.db (atomic copy)
+└── images/                  └── images/ (rsync)
+```
+
+**Pull backups to another machine:**
+
+```bash
+rsync -az pi@server:/path/to/backend/backups/ ~/party-backups/
+```
+
+**Recovery:**
+
+```bash
+cp ~/party-backups/stocks.db ./backend/data/
+cp -r ~/party-backups/images/* ./backend/data/images/
+docker compose up -d
+```
+
+**External backup drive:**
+
+```yaml
+# docker-compose.yml
+backup:
+  volumes:
+    - ./backend/data:/data:ro
+    - /mnt/usb-backup:/backups  # External drive
+```
+
+### Database Migrations
+
+```bash
+# In Docker
+docker compose exec backend alembic upgrade head
+
+# Local development
+cd backend && uv run alembic upgrade head
+
+# Create new migration after model changes
+cd backend && uv run alembic revision --autogenerate -m "description"
+```
+
+## Configuration
+
+Key environment variables (in `backend/.env`):
+
+| Variable | Description |
+|----------|-------------|
+| `ATLASCLOUD_API_KEY` | Required for AI content generation |
+| `GOOGLE_AI_API_KEY` | Fallback for text generation |
+| `CORS_ALLOW_ALL` | Set `true` for development |
+
+See `backend/README.md` for complete configuration reference.
+
+## Project Structure
+
+```
+schoen.macht.geld/
+├── backend/                 # FastAPI backend
+│   ├── src/app/             # Application code
+│   ├── data/                # Database + images
+│   ├── backups/             # Periodic backups
+│   └── scripts/             # Utility scripts
+├── frontend/                # Next.js frontend
+│   └── src/
+│       ├── app/             # Pages (App Router)
+│       ├── components/      # React components
+│       ├── hooks/           # SWR data fetching
+│       └── lib/api/         # Generated API client
+├── docker-compose.yml       # Production orchestration
+└── Caddyfile                # Reverse proxy config
+```
+
+## License
+
+Private project for VAK / Amphitheater events.
