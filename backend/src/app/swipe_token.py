@@ -1,5 +1,7 @@
 """Swipe token encoding/decoding and analysis for stateless user tracking."""
 
+from __future__ import annotations
+
 import base64
 import random
 import time
@@ -7,6 +9,7 @@ import time
 from pydantic import BaseModel, ValidationError
 
 from app.config import settings
+from app.schemas.stock import SwipeDirection
 
 
 class SwipeStats(BaseModel):
@@ -16,7 +19,7 @@ class SwipeStats(BaseModel):
     total_right: int = 0
     recent_left: int = 0  # last ~1 minute
     recent_right: int = 0
-    streak_direction: str | None = None  # "left" or "right" if streak detected
+    streak_direction: SwipeDirection | None = None
     streak_length: int = 0
     pickiness_ratio: float = 0.5  # 0 = all right, 1 = all left
 
@@ -43,7 +46,7 @@ class SwipeToken(BaseModel):
         """Encode token to base64 string."""
         return base64.urlsafe_b64encode(self.model_dump_json().encode()).decode()
 
-    def update(self, direction: str) -> None:
+    def update(self, direction: SwipeDirection) -> None:
         """Update token with a new swipe, shifting buckets as needed."""
         now = int(time.time())
         elapsed = now - self.ts
@@ -68,7 +71,7 @@ class SwipeToken(BaseModel):
 
         # Increment current bucket
         left, right = buckets[0]
-        if direction == "left":
+        if direction == SwipeDirection.LEFT:
             buckets[0] = (left + 1, right)
         else:
             buckets[0] = (left, right + 1)
@@ -98,24 +101,24 @@ class SwipeToken(BaseModel):
             stats.pickiness_ratio = stats.total_left / total
 
         # Detect streaks (consecutive buckets with only one direction)
-        streak_dir = None
+        streak_dir: SwipeDirection | None = None
         streak_len = 0
         for left, right in self.buckets:
             if left == 0 and right == 0:
                 break  # empty bucket ends streak analysis
             if left > 0 and right == 0:
-                if streak_dir == "left":
+                if streak_dir == SwipeDirection.LEFT:
                     streak_len += 1
                 elif streak_dir is None:
-                    streak_dir = "left"
+                    streak_dir = SwipeDirection.LEFT
                     streak_len = 1
                 else:
                     break
             elif right > 0 and left == 0:
-                if streak_dir == "right":
+                if streak_dir == SwipeDirection.RIGHT:
                     streak_len += 1
                 elif streak_dir is None:
-                    streak_dir = "right"
+                    streak_dir = SwipeDirection.RIGHT
                     streak_len = 1
                 else:
                     break
@@ -130,7 +133,7 @@ class SwipeToken(BaseModel):
 
 
 def calculate_price_delta(
-    current_price: float, direction: str, stats: SwipeStats
+    current_price: float, direction: SwipeDirection, stats: SwipeStats
 ) -> float:
     """Calculate price change based on direction and user stats."""
     # Base change: random percentage of current price
@@ -151,10 +154,10 @@ def calculate_price_delta(
 
     # Pickiness bonus: picky users (many left swipes) get bonus on right swipes
     pickiness_mult = 1.0
-    if direction == "right" and stats.pickiness_ratio > 0.6:
+    if direction == SwipeDirection.RIGHT and stats.pickiness_ratio > 0.6:
         # More left swipes → right swipes count more
         pickiness_mult = 1.0 + (stats.pickiness_ratio - 0.5)
-    elif direction == "left" and stats.pickiness_ratio < 0.4:
+    elif direction == SwipeDirection.LEFT and stats.pickiness_ratio < 0.4:
         # More right swipes → left swipes count more
         pickiness_mult = 1.0 + (0.5 - stats.pickiness_ratio)
 
@@ -162,7 +165,7 @@ def calculate_price_delta(
     delta = base_delta * random_mult * streak_mult * pickiness_mult
 
     # Apply direction
-    if direction == "left":
+    if direction == SwipeDirection.LEFT:
         delta = -delta
 
     return delta

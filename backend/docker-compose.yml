@@ -1,0 +1,40 @@
+services:
+  backend:
+    build: .
+    restart: unless-stopped
+    volumes:
+      # Persist database and images
+      - ./data:/app/data
+      # Mount .env file for configuration
+      - ./.env:/app/.env:ro
+    environment:
+      - DATABASE_URL=sqlite+aiosqlite:///./data/stocks.db
+      - IMAGE_DIR=/app/data/images
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    # Expose port for debugging (optional, Caddy proxies in production)
+    # ports:
+    #   - "8000:8000"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./data/images:/srv/images:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  caddy_data:
+  caddy_config:

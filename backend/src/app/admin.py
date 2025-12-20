@@ -1,7 +1,6 @@
 from typing import Any, override
 
 from fastapi import FastAPI
-from fastapi_storages import StorageImage  # pyright: ignore[reportMissingTypeStubs]
 from loguru import logger
 from sqladmin import Admin, ModelView
 from sqlalchemy.ext.asyncio import AsyncEngine
@@ -42,8 +41,6 @@ class StockAdmin(ModelView, model=Stock):
     ]
     can_export = False
 
-    _old_image: StorageImage | None = None
-
     @override
     async def on_model_change(
         self,
@@ -80,11 +77,12 @@ class StockAdmin(ModelView, model=Stock):
                     max_mb = settings.max_image_size / (1024 * 1024)
                     raise ValueError(f"Image too large. Max size: {max_mb:.1f}MB.")
 
-        # Store old image reference for cleanup after commit
+        # Store old image reference in request.state for cleanup after commit
+        # Using request.state makes this per-request, avoiding race conditions
         if not is_created and model.image and image:
-            self._old_image = model.image
+            request.state.old_stock_image = model.image
         else:
-            self._old_image = None
+            request.state.old_stock_image = None
 
     @override
     async def after_model_change(
@@ -95,8 +93,9 @@ class StockAdmin(ModelView, model=Stock):
         request: Request,
     ) -> None:
         """Clean up old image after model change."""
-        if self._old_image:
-            cleanup_old_image(self._old_image)
+        old_image = getattr(request.state, "old_stock_image", None)
+        if old_image:
+            cleanup_old_image(old_image)
             logger.info("Admin: cleaned up old image for stock {}", model.ticker)
 
 

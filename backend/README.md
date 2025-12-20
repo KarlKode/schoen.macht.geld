@@ -354,7 +354,11 @@ Environment variables (or `.env` file):
 |---------------------|--------------------------------------|------------------------------------|
 | DATABASE_URL        | sqlite+aiosqlite:///./data/stocks.db | SQLite database path               |
 | DEBUG               | false                                | Enable debug mode                  |
-| CORS_ORIGINS        | ["http://localhost:3000"]            | Allowed CORS origins               |
+| CORS_ORIGINS        | ["http://localhost:3000"]            | Allowed CORS origins (JSON array)  |
+| CORS_ALLOW_ALL      | false                                | Allow all origins (dev only!)      |
+| UVICORN_HOST        | 127.0.0.1                            | Server bind address                |
+| UVICORN_PORT        | 8000                                 | Server port                        |
+| UVICORN_WORKERS     | 1                                    | Number of worker processes         |
 | LOGURU_LEVEL        | INFO                                 | Log level (loguru)                 |
 | STOCK_BASE_PRICE    | 1000.0                               | Default price for new stocks       |
 | PRICE_TICK_INTERVAL | 60                                   | Seconds between random price ticks |
@@ -379,6 +383,106 @@ Environment variables (or `.env` file):
 | SWIPE_RANDOM_MULTIPLIER_MAX | 2.0                         | Max random multiplier              |
 | SWIPE_STREAK_THRESHOLD | 5                                 | Buckets for streak detection       |
 | SWIPE_STREAK_PENALTY | 0.7                                 | Multiplier when streak detected    |
+
+## Production Deployment
+
+### Docker Compose (Recommended)
+
+The easiest way to run in production - handles auto-restart, Caddy reverse proxy, and all services.
+
+```bash
+# Build and start all services
+docker compose up -d
+
+# View logs
+docker compose logs -f
+
+# Stop all services
+docker compose down
+
+# Rebuild after code changes
+docker compose build && docker compose up -d
+```
+
+This starts:
+- **backend** - Python/uvicorn on port 8000 (internal)
+- **caddy** - Reverse proxy on ports 80/443
+
+Data is persisted in `./data/` (database + images).
+
+#### Auto-start on Boot
+
+Docker automatically restarts containers after reboot (due to `restart: unless-stopped`). Just ensure Docker starts on boot:
+
+```bash
+# Linux
+sudo systemctl enable docker
+
+# macOS - Docker Desktop starts automatically
+
+# Windows - Docker Desktop starts automatically
+```
+
+#### Custom Domain with HTTPS
+
+Edit `Caddyfile` to use your domain:
+```
+stock.party.example.com {
+    handle /images/* {
+        root * /srv
+        file_server
+    }
+    handle {
+        reverse_proxy backend:8000
+    }
+}
+```
+
+Caddy automatically provisions Let's Encrypt certificates.
+
+### Manual Deployment (without Docker)
+
+Development (with hot reload):
+```bash
+PYTHONPATH=src uv run uvicorn app.main:app --reload
+```
+
+Production (using config from .env):
+```bash
+PYTHONPATH=src uv run python -m app
+```
+
+Or with explicit settings:
+```bash
+PYTHONPATH=src uv run uvicorn app.main:app \
+  --host 0.0.0.0 \
+  --port 8000 \
+  --workers 4
+```
+
+#### Caddy Reverse Proxy (Manual)
+
+If running without Docker, install Caddy separately and use this config:
+
+```
+stock.party.local {
+    handle /images/* {
+        root * /path/to/backend/data
+        file_server
+    }
+    handle {
+        reverse_proxy localhost:8000
+    }
+}
+```
+
+Update `.env` for production:
+```bash
+CORS_ORIGINS=["https://stock.party.local"]
+UVICORN_HOST=127.0.0.1  # Only listen on localhost, Caddy proxies
+UVICORN_PORT=8000
+UVICORN_WORKERS=4
+```
 
 ## Development
 

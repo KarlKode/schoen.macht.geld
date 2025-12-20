@@ -28,12 +28,6 @@ from app.storage import cleanup_old_image, process_image, validate_image
 router = APIRouter()
 
 
-def generate_ticker(title: str) -> str:
-    """Generate a 4-char ticker from title."""
-    clean = "".join(c for c in title if c.isalpha()).upper()
-    return (clean[:4]).ljust(4, "X")
-
-
 @router.get("/")
 async def list_stocks(
     random: Annotated[bool, Query()] = False,
@@ -59,12 +53,24 @@ async def create_stock(
     image: StockImageUpdate | None = None,
 ) -> StockResponse:
     """Create a new stock."""
-    ticker = generate_ticker(request.title)
+    ticker = request.ticker.upper().strip()
+
+    # Validate ticker format
+    if not ticker or len(ticker) > 10:
+        raise HTTPException(
+            status_code=400, detail="Ticker must be 1-10 characters"
+        )
+    if not ticker.isalnum():
+        raise HTTPException(
+            status_code=400, detail="Ticker must contain only letters and numbers"
+        )
 
     existing = await session.get(Stock, ticker)
     if existing:
         logger.warning("Ticker {} already exists", ticker)
-        raise HTTPException(status_code=400, detail=f"Ticker {ticker} already exists")
+        raise HTTPException(
+            status_code=409, detail=f"Ticker '{ticker}' already exists"
+        )
 
     # Validate and process image if provided
     processed_image = None

@@ -84,6 +84,7 @@ class StockResponse(BaseModel):
 class StockCreate(BaseModel):
     """Schema for creating a stock."""
 
+    ticker: str
     title: str
     description: str = ""
     initial_price: float = settings.stock_base_price

@@ -6,6 +6,7 @@ from apscheduler.schedulers.asyncio import (  # pyright: ignore[reportMissingTyp
     AsyncIOScheduler,
 )
 from loguru import logger
+from sqlalchemy import delete
 from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -13,7 +14,11 @@ from app.config import settings
 from app.database import async_session_maker
 from app.models.ai_task import AITask, TaskStatus, TaskType
 from app.models.stock import ChangeType, PriceEvent, Stock, StockSnapshot
-from app.services.atlascloud import AtlasCloudError, atlascloud
+from app.services.atlascloud import (
+    AtlasCloudError,
+    AtlasCloudTransientError,
+    atlascloud,
+)
 
 scheduler = AsyncIOScheduler()
 
@@ -116,10 +121,16 @@ def _update_rankings(stocks: list[Stock]) -> None:
 
 
 async def _cleanup_old_snapshots(session: AsyncSession) -> None:
-    """Remove snapshots beyond retention limit for each stock."""
-    # Get all unique tickers
+    """Remove snapshots beyond retention limit for each stock.
+
+    Uses efficient bulk delete instead of individual deletes.
+    For each ticker, keeps only the N most recent snapshots.
+    """
+    # Get all unique tickers in one query
     result = await session.exec(select(StockSnapshot.ticker).distinct())
     tickers = result.all()
+
+    total_deleted = 0
 
     for ticker in tickers:
         # Get IDs of snapshots to keep (most recent N)
@@ -129,27 +140,30 @@ async def _cleanup_old_snapshots(session: AsyncSession) -> None:
             .order_by(col(StockSnapshot.created_at).desc())
             .limit(settings.snapshot_retention)
         )
-        keep_ids = set(keep_result.all())
+        keep_ids = list(keep_result.all())
 
         if not keep_ids:
             continue
 
-        # Get all snapshot IDs for this ticker
-        all_result = await session.exec(
-            select(StockSnapshot.id).where(StockSnapshot.ticker == ticker)
+        # Get IDs to delete (all except the ones to keep) in one query
+        delete_result = await session.exec(
+            select(StockSnapshot.id)
+            .where(StockSnapshot.ticker == ticker)
+            .where(col(StockSnapshot.id).notin_(keep_ids))
         )
-        all_ids = set(all_result.all())
+        delete_ids = list(delete_result.all())
 
-        # Delete IDs that are not in keep_ids
-        delete_ids = all_ids - keep_ids
         if delete_ids:
-            for snapshot_id in delete_ids:
-                snapshot = await session.get(StockSnapshot, snapshot_id)
-                if snapshot:
-                    await session.delete(snapshot)
+            # Bulk delete using raw SQL for efficiency
+            stmt = delete(StockSnapshot).where(col(StockSnapshot.id).in_(delete_ids))
+            await session.exec(stmt)  # pyright: ignore[reportArgumentType]
+            total_deleted += len(delete_ids)
 
-            await session.commit()
-            logger.debug("Cleaned up {} old snapshots for {}", len(delete_ids), ticker)
+    if total_deleted > 0:
+        await session.commit()
+        logger.debug(
+            "Cleaned up {} old snapshots across {} tickers", total_deleted, len(tickers)
+        )
 
 
 async def process_ai_tasks() -> None:
@@ -173,15 +187,24 @@ async def process_ai_tasks() -> None:
                 elif task.status == TaskStatus.PROCESSING:
                     await _poll_task(task, session)
             except AtlasCloudError as e:
-                logger.error(f"AtlasCloud error for task {task.id}: {e}")
+                # Non-retryable API error (4xx, circuit breaker open)
+                logger.error("AtlasCloud error for task {}: {}", task.id, e)
                 task.status = TaskStatus.FAILED
                 task.error = str(e)
                 task.completed_at = datetime.now(UTC)
                 session.add(task)
-            except Exception as e:
-                logger.exception(f"Error processing task {task.id}: {e}")
+            except AtlasCloudTransientError as e:
+                # Transient error after all retries exhausted
+                logger.error("AtlasCloud transient error for task {}: {}", task.id, e)
                 task.status = TaskStatus.FAILED
-                task.error = str(e)
+                task.error = f"Failed after retries: {e}"
+                task.completed_at = datetime.now(UTC)
+                session.add(task)
+            except OSError as e:
+                # File I/O errors (downloading results, etc.)
+                logger.error("I/O error for task {}: {}", task.id, e)
+                task.status = TaskStatus.FAILED
+                task.error = f"I/O error: {e}"
                 task.completed_at = datetime.now(UTC)
                 session.add(task)
 
@@ -190,7 +213,7 @@ async def process_ai_tasks() -> None:
 
 async def _submit_task(task: AITask, session: AsyncSession) -> None:
     """Submit a pending task to AtlasCloud."""
-    logger.info(f"Submitting {task.task_type.value} task {task.id}")
+    logger.info("Submitting {} task {}", task.task_type.value, task.id)
 
     if task.task_type == TaskType.DESCRIPTION:
         # Text generation is synchronous (fast)
@@ -200,21 +223,25 @@ async def _submit_task(task: AITask, session: AsyncSession) -> None:
         task.result = content.strip()  # pyright: ignore[reportAny]
         task.status = TaskStatus.COMPLETED
         task.completed_at = datetime.now(UTC)
-        logger.info(f"Completed text task {task.id}")
+        logger.info("Completed text task {}", task.id)
 
     elif task.task_type == TaskType.IMAGE:
         response = await atlascloud.generate_image(task.prompt, task.model)
         data = response.get("data", {})  # pyright: ignore[reportAny]
         task.atlascloud_id = data.get("id")  # pyright: ignore[reportAny]
         task.status = TaskStatus.PROCESSING
-        logger.info(f"Started image task {task.id}, atlascloud_id={task.atlascloud_id}")
+        logger.info(
+            "Started image task {}, atlascloud_id={}", task.id, task.atlascloud_id
+        )
 
     elif task.task_type == TaskType.VIDEO:
         response = await atlascloud.generate_video_from_text(task.prompt, task.model)
         data = response.get("data", {})  # pyright: ignore[reportAny]
         task.atlascloud_id = data.get("id")  # pyright: ignore[reportAny]
         task.status = TaskStatus.PROCESSING
-        logger.info(f"Started video task {task.id}, atlascloud_id={task.atlascloud_id}")
+        logger.info(
+            "Started video task {}, atlascloud_id={}", task.id, task.atlascloud_id
+        )
 
     session.add(task)
 
@@ -222,7 +249,7 @@ async def _submit_task(task: AITask, session: AsyncSession) -> None:
 async def _poll_task(task: AITask, session: AsyncSession) -> None:
     """Poll a processing task for completion."""
     if not task.atlascloud_id:
-        logger.warning(f"Task {task.id} has no atlascloud_id, marking failed")
+        logger.warning("Task {} has no atlascloud_id, marking failed", task.id)
         task.status = TaskStatus.FAILED
         task.error = "No external task ID"
         session.add(task)
@@ -235,7 +262,7 @@ async def _poll_task(task: AITask, session: AsyncSession) -> None:
         created = created.replace(tzinfo=UTC)
     elapsed = (now - created).total_seconds()
     if elapsed > settings.ai_task_timeout:
-        logger.warning(f"Task {task.id} timed out after {elapsed}s")
+        logger.warning("Task {} timed out after {}s", task.id, elapsed)
         task.status = TaskStatus.FAILED
         task.error = "Task timed out"
         task.completed_at = datetime.now(UTC)
@@ -253,13 +280,13 @@ async def _poll_task(task: AITask, session: AsyncSession) -> None:
             await _download_result(task, output_urls[0])  # pyright: ignore[reportAny]
         task.status = TaskStatus.COMPLETED
         task.completed_at = datetime.now(UTC)
-        logger.info(f"Task {task.id} completed: {task.result}")
+        logger.info("Task {} completed: {}", task.id, task.result)
 
     elif status == "failed":
         task.status = TaskStatus.FAILED
         task.error = data.get("error", "Unknown error")  # pyright: ignore[reportAny]
         task.completed_at = datetime.now(UTC)
-        logger.error(f"Task {task.id} failed: {task.error}")
+        logger.error("Task {} failed: {}", task.id, task.error)
 
     # else: still processing, do nothing
 
@@ -291,7 +318,7 @@ async def _download_result(task: AITask, url: str) -> None:
     _ = filepath.write_bytes(content)
 
     task.result = str(filepath)
-    logger.info(f"Downloaded {task.task_type.value} to {filepath}")
+    logger.info("Downloaded {} to {}", task.task_type.value, filepath)
 
 
 def start_scheduler() -> None:
@@ -342,7 +369,11 @@ def start_scheduler() -> None:
 
 
 def stop_scheduler() -> None:
-    """Stop the background scheduler."""
+    """Stop the background scheduler gracefully.
+
+    Waits for currently running jobs to complete before shutting down.
+    """
     if scheduler.running:
-        scheduler.shutdown(wait=False)
-        logger.info("Stopped price tick scheduler")
+        logger.info("Stopping scheduler, waiting for running jobs to complete...")
+        scheduler.shutdown(wait=True)
+        logger.info("Scheduler stopped")

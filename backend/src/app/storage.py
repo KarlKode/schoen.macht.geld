@@ -10,7 +10,7 @@ from fastapi_storages import (  # pyright: ignore[reportMissingTypeStubs]
     StorageImage,
 )
 from loguru import logger
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
 
 from app.config import settings
 
@@ -132,10 +132,12 @@ async def process_image(file: UploadFile) -> UploadFile:
         # Resize if larger than max dimension
         max_dim = settings.image_max_dimension
         if img.width > max_dim or img.height > max_dim:
+            original_width, original_height = img.width, img.height
             img.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
             logger.debug(
                 "Resized image from {}x{} to {}x{}",
-                content[:10],  # dummy, actual size not available here
+                original_width,
+                original_height,
                 img.width,
                 img.height,
             )
@@ -166,8 +168,19 @@ async def process_image(file: UploadFile) -> UploadFile:
 
         return new_file
 
-    except Exception as e:
-        logger.warning("Failed to process image, using original: {}", e)
+    except UnidentifiedImageError as e:
+        # Pillow can't recognize the image format - use original
+        logger.warning("Cannot identify image format, using original: {}", e)
+        await file.seek(0)
+        return file
+    except OSError as e:
+        # File I/O or corrupt image data - use original
+        logger.warning("Image I/O error, using original: {}", e)
+        await file.seek(0)
+        return file
+    except ValueError as e:
+        # Mode conversion issues - use original
+        logger.warning("Image conversion error, using original: {}", e)
         await file.seek(0)
         return file
 

@@ -16,6 +16,7 @@ from app.schemas.ai import (
     GenerateDescriptionRequest,
     GenerateImageRequest,
     GenerateVideoRequest,
+    MessageResponse,
 )
 
 router = APIRouter()
@@ -90,7 +91,7 @@ async def generate_description(
     await session.commit()
     await session.refresh(task)
 
-    logger.info(f"Created description task {task.id} for {title}")
+    logger.info("Created description task {} for {}", task.id, title)
     return AITaskCreateResponse(
         task_id=task.id,
         status=task.status,
@@ -129,7 +130,7 @@ async def generate_image(
     await session.commit()
     await session.refresh(task)
 
-    logger.info(f"Created image task {task.id} ({request.image_type}) for {title}")
+    logger.info("Created image task {} ({}) for {}", task.id, request.image_type, title)
     return AITaskCreateResponse(
         task_id=task.id,
         status=task.status,
@@ -170,7 +171,7 @@ async def generate_video(
     await session.commit()
     await session.refresh(task)
 
-    logger.info(f"Created video task {task.id} for {title}")
+    logger.info("Created video task {} for {}", task.id, title)
     return AITaskCreateResponse(
         task_id=task.id,
         status=task.status,
@@ -214,7 +215,7 @@ async def apply_result(
     task_id: str,
     request: ApplyResultRequest,
     session: AsyncSession = Depends(get_session),
-) -> dict[str, str]:
+) -> MessageResponse:
     """Apply a completed task's result to a stock."""
     task = await session.get(AITask, task_id)
     if not task:
@@ -236,31 +237,30 @@ async def apply_result(
         stock.updated_at = datetime.now(UTC)
         session.add(stock)
         await session.commit()
-        logger.info(f"Applied description from task {task_id} to {request.ticker}")
-        return {"message": f"Description applied to {request.ticker}"}
+        logger.info("Applied description from task {} to {}", task_id, request.ticker)
+        return MessageResponse(message=f"Description applied to {request.ticker}")
 
     elif task.task_type == TaskType.IMAGE:
         # For images, result is a file path - would need to copy/move file
-        # For now, just return info about what would happen
-        return {
-            "message": f"Image at {task.result} ready to apply to {request.ticker}",
-            "note": "Manual image upload required for now",
-        }
+        return MessageResponse(
+            message=f"Image at {task.result} ready to apply to {request.ticker}",
+            note="Manual image upload required for now",
+        )
 
     elif task.task_type == TaskType.VIDEO:
-        return {
-            "message": f"Video at {task.result} ready for {request.ticker}",
-            "note": "Videos are stored separately, not applied to stock directly",
-        }
+        return MessageResponse(
+            message=f"Video at {task.result} ready for {request.ticker}",
+            note="Videos are stored separately, not applied to stock directly",
+        )
 
-    return {"message": "Unknown task type"}
+    return MessageResponse(message="Unknown task type")
 
 
 @router.delete("/tasks/{task_id}")
 async def delete_task(
     task_id: str,
     session: AsyncSession = Depends(get_session),
-) -> dict[str, str]:
+) -> MessageResponse:
     """Delete an AI task."""
     task = await session.get(AITask, task_id)
     if not task:
@@ -269,5 +269,5 @@ async def delete_task(
     await session.delete(task)
     await session.commit()
 
-    logger.info(f"Deleted task {task_id}")
-    return {"message": f"Task {task_id} deleted"}
+    logger.info("Deleted task {}", task_id)
+    return MessageResponse(message=f"Task {task_id} deleted")

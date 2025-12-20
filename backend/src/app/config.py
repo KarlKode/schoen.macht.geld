@@ -10,7 +10,15 @@ class Settings(BaseSettings):
 
     database_url: str = "sqlite+aiosqlite:///./data/stocks.db"
     debug: bool = False
+
+    # CORS
     cors_origins: list[str] = ["http://localhost:3000"]
+    cors_allow_all: bool = False  # Set to true to allow all origins (dev only!)
+
+    # ASGI server (uvicorn)
+    uvicorn_host: str = "127.0.0.1"
+    uvicorn_port: int = 8000
+    uvicorn_workers: int = 1  # Use 4+ for production
 
     # Stock base price
     stock_base_price: float = 1000.0

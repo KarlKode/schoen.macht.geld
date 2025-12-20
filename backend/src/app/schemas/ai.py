@@ -63,3 +63,10 @@ class ApplyResultRequest(BaseModel):
     """Request to apply a generated result to a stock."""
 
     ticker: str  # Target stock ticker
+
+
+class MessageResponse(BaseModel):
+    """Simple message response for operations without complex data."""
+
+    message: str
+    note: str | None = None

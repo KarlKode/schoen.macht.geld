@@ -1,0 +1,15 @@
+# Caddy reverse proxy configuration
+# Replace "localhost" with your actual domain for production
+
+:80 {
+    # Serve static images directly (more efficient)
+    handle /images/* {
+        root * /srv
+        file_server
+    }
+
+    # Proxy all other requests to the backend
+    handle {
+        reverse_proxy backend:8000
+    }
+}
