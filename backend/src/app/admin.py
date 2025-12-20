@@ -9,12 +9,8 @@ from starlette.requests import Request
 
 from app.config import settings
 from app.models.ai_task import AITask
-from app.models.stock import Stock, StockPrice, StockSnapshot
+from app.models.stock import PriceEvent, Stock, StockSnapshot
 from app.storage import ALLOWED_IMAGE_TYPES, cleanup_old_image
-
-
-def inspect_and_format(m: Stock, _: str) -> list[str]:
-    return [f"{repr(p)}" for p in m.prices]
 
 
 class StockAdmin(ModelView, model=Stock):
@@ -26,17 +22,19 @@ class StockAdmin(ModelView, model=Stock):
         "is_active",
         "created_at",
         "updated_at",
-        "prices",
+        "price_events",
         "ai_tasks",
     ]
     column_searchable_list = ["ticker", "title"]
     column_sortable_list = ["ticker", "is_active"]
     column_default_sort = [("ticker", False)]
-    column_formatters_detail = {"prices": lambda m, _: [repr(p) for p in m.prices]}  # pyright: ignore[reportUnknownLambdaType, reportUnknownMemberType, reportUnknownArgumentType]
+    column_formatters_detail = {
+        "price_events": lambda m, _: [repr(p) for p in m.price_events]  # pyright: ignore[reportUnknownLambdaType, reportUnknownMemberType, reportUnknownArgumentType]
+    }
     form_include_pk = True
     form_widget_args = {"image": {"accept": "image/*", "capture": "environment"}}
     form_excluded_columns = [
-        "prices",
+        "price_events",
         "snapshots",
         "created_at",
         "updated_at",
@@ -102,13 +100,15 @@ class StockAdmin(ModelView, model=Stock):
             logger.info("Admin: cleaned up old image for stock {}", model.ticker)
 
 
-class StockPriceAdmin(ModelView, model=StockPrice):
+class PriceEventAdmin(ModelView, model=PriceEvent):
     column_list = ["id", "ticker", "price", "change_type", "created_at"]
     column_sortable_list = ["id", "ticker", "created_at"]
     column_default_sort = [("created_at", True)]
     can_create = False
     can_edit = False
     can_export = False
+    name = "Price Event"
+    name_plural = "Price Events"
 
 
 class StockSnapshotAdmin(ModelView, model=StockSnapshot):
@@ -144,7 +144,7 @@ class AITaskAdmin(ModelView, model=AITask):
 def setup_admin(app: FastAPI, engine: AsyncEngine) -> Admin:
     admin = Admin(app, engine, title="Schoen Macht Geld Admin")
     admin.add_view(StockAdmin)
-    admin.add_view(StockPriceAdmin)
+    admin.add_view(PriceEventAdmin)
     admin.add_view(StockSnapshotAdmin)
     admin.add_view(AITaskAdmin)
     return admin

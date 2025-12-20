@@ -52,20 +52,22 @@ data/
 | image             | StorageImage? | Uploaded image (served at `/images/`)    |
 | description       | str           | Optional description                     |
 | is_active         | bool          | Whether stock is tradeable               |
-| price             | float         | Current price (from latest StockPrice)   |
+| price             | float         | Current price (from latest PriceEvent)   |
 | reference_price   | float?        | Price at last snapshot (for % change)    |
 | reference_price_at| datetime?     | When reference price was set             |
 | percentage_change | float?        | Change from reference price (computed)   |
-| prices            | list          | Price history entries                    |
+| price_events      | list          | Price change event log                   |
 | snapshots         | list          | Periodic price snapshots for graphs      |
 
-### StockPrice
+### PriceEvent
+
+Price change event log - captures every price change with its cause.
 
 | Field       | Type       | Description                    |
 |-------------|------------|--------------------------------|
 | id          | int        | Auto-increment primary key     |
 | ticker      | str        | Foreign key to Stock           |
-| price       | float      | Price at this point in time    |
+| price       | float      | Price after this change        |
 | change_type | ChangeType | Why the price changed          |
 | created_at  | datetime   | Timestamp                      |
 
@@ -99,6 +101,7 @@ Periodic price snapshots used for line graphs and percentage change calculation.
 | POST   | /stocks/{ticker}/image      | Upload stock image             |
 | POST   | /stocks/{ticker}/price      | Manipulate stock price         |
 | GET    | /stocks/{ticker}/snapshots  | Get price snapshots for graphs |
+| GET    | /stocks/{ticker}/events     | Get price change event log     |
 | POST   | /swipe/                     | Record swipe action            |
 | GET    | /images/{filename}          | Serve uploaded images          |
 
@@ -114,7 +117,7 @@ Example: Get 5 random stocks:
 curl "http://localhost:8000/stocks/?random=true&limit=5"
 ```
 
-**Note:** Price history is limited to the 10 most recent entries per stock to reduce response size.
+**Note:** Price events are limited to the 10 most recent entries per stock to reduce response size.
 
 ### Create Stock
 
@@ -172,7 +175,7 @@ curl -X POST http://localhost:8000/stocks/APPL/price \
 Access at `/admin`. Features:
 
 - **Stocks**: View, create, edit, search stocks (supports camera capture on mobile)
-- **Stock Prices**: View price history (read-only)
+- **Price Events**: View price change event log (read-only)
 - **Stock Snapshots**: View periodic price snapshots (read-only)
 - **AI Tasks**: View AI generation tasks and their status
 
@@ -298,18 +301,18 @@ The following changes need to be made in the frontend:
 
 ### Stock Model Changes
 
-| Old Field       | New Field      | Notes                           |
-|-----------------|----------------|---------------------------------|
-| `nickname`      | `title`        | Renamed                         |
-| `photo_url`     | `image`        | Now `StorageImage?` (file upload only) |
-| `current_value` | `price`        | Computed from latest StockPrice |
-| `initial_value` | `initial_price`| Computed from first StockPrice  |
-| `rank`          | -              | Removed                         |
-| `previous_rank` | -              | Removed                         |
-| `history`       | `prices`       | Renamed                         |
-| -               | `is_active`    | New field (boolean)             |
+| Old Field       | New Field       | Notes                              |
+|-----------------|-----------------|-------------------------------------|
+| `nickname`      | `title`         | Renamed                             |
+| `photo_url`     | `image`         | Now `StorageImage?` (file upload)   |
+| `current_value` | `price`         | Computed from latest PriceEvent     |
+| `initial_value` | `initial_price` | Computed from first PriceEvent      |
+| `rank`          | -               | Removed                             |
+| `previous_rank` | -               | Removed                             |
+| `history`       | `price_events`  | Renamed                             |
+| -               | `is_active`     | New field (boolean)                 |
 
-### StockPrice (formerly PriceHistory) Changes
+### PriceEvent (formerly PriceHistory) Changes
 
 | Old Field   | New Field     | Notes                      |
 |-------------|---------------|----------------------------|

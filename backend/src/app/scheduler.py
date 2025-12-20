@@ -12,7 +12,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from app.config import settings
 from app.database import async_session_maker
 from app.models.ai_task import AITask, TaskStatus, TaskType
-from app.models.stock import ChangeType, Stock, StockPrice, StockSnapshot
+from app.models.stock import ChangeType, PriceEvent, Stock, StockSnapshot
 from app.services.atlascloud import AtlasCloudError, atlascloud
 
 scheduler = AsyncIOScheduler()
@@ -36,12 +36,12 @@ async def tick_prices() -> None:
             # Enforce price >= 0
             new_price = max(0.0, stock.price + delta)
 
-            price_entry = StockPrice(
+            price_event = PriceEvent(
                 ticker=stock.ticker,
                 price=new_price,
                 change_type=ChangeType.RANDOM,
             )
-            session.add(price_entry)
+            session.add(price_event)
 
             stock.updated_at = datetime.now(UTC)
             session.add(stock)

@@ -5,7 +5,7 @@ from loguru import logger
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.database import get_session
-from app.models.stock import ChangeType, Stock, StockPrice
+from app.models.stock import ChangeType, PriceEvent, Stock
 from app.schemas.stock import StockResponse, SwipeRequest
 
 router = APIRouter()
@@ -38,13 +38,13 @@ async def swipe(
     # Calculate new price (enforce >= 0)
     new_price = max(0.0, stock.price + delta)
 
-    # Record price entry
-    price_entry = StockPrice(
+    # Record price event
+    price_event = PriceEvent(
         ticker=stock.ticker,
         price=new_price,
         change_type=change_type,
     )
-    session.add(price_entry)
+    session.add(price_event)
 
     stock.updated_at = datetime.now(UTC)
     session.add(stock)

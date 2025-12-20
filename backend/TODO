@@ -5,25 +5,63 @@
 * [x] Don't return whole price history
 * [x] Add random and limit parameters to the stock endpoint to select N random stocks
 * [x] Modify stock admin form to support camera capture
-* [ ] Define "last price" and compute percentage change
-* [ ] Create computed price history (regularly take the current price for all stocks and their movement
+* [x] Define "last price" and compute percentage change (reference_price + percentage_change)
+* [x] Create computed price history (StockSnapshot with periodic scheduler job)
+* [ ] Create stock ranking (including places gained/lost since last update) when creating snapshot.
 * [ ] Check if PK columns of StockPrice and StockSnapshot are required or if we can use TICKER + timestamp
 * [ ] Rework swipe endpoint
+  * [ ] Inputs/params
+  * [ ] Return type
+  * [ ] Make price increase/decrease more random
+    * [ ] Randomness
+    * [ ] Current price
+    * [ ] Up/down streak
+    * [ ] Swipes of user during the last few minutes
 * [ ] Live feed
-* [ ] Limit prices can be sync
-* [ ] Validate current file size limit
+* [ ] Make limit_prices sync (doesn't need async)
+* [ ] Validate if current file size limit is enough & check if image type enumeration is complete
 * [ ] Compress uploaded images if too large (or just in general recompress/resize all uploaded images)
 
 ## Polishing
 
+* [ ] Complete this file/at least this & the "Must have use-cases" section"
 * [ ] Setup
   * [ ] HTTP server for images & static assets
+  * [ ] DB setup (postgres overkill?)
+  * [ ] Create docker compose for the backend (and possibly frontend?)
   * [ ] Run script for backend
   * [ ] Document setup, configuration & troubleshooting
-* [ ] Backups?
+  * [ ]
+* [ ] Backups/Recovery
+  * [ ] Maybe continuously/periodically send current state to external server?
 * [ ] Benchmark DB
-* [ ]
+* [ ] Make sure that server restarts when it crashes
+* ...
 
+### Must have use-cases
+
+* Register a new stock
+  * TODO
+* Display market map
+* Display rankings
+* Display news ticker
+* Display the title chart
+  * Initial stock
+  * Periodically switch to different stock
+* Tinder
+  * Load initial stock batch (empty DB)
+  * Load next batch of stocks to swipe
+  * Swipe left/right on a stock (and therefore change the stocks price)
+* Administration
+  * List all stocks
+  * Edit a stocks
+    * Ticker?
+    * Title?
+    * Description (regenerate or manually edit?)
+    * Photo
+    * Set price
+    * Delete price events & history
+  * Remove a stock
 
 ## AI
 

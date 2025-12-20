@@ -24,10 +24,10 @@ class ChangeType(str, Enum):
     ADMIN = "admin"
 
 
-class StockPrice(SQLModel, table=True):
-    """Price entry for a stock."""
+class PriceEvent(SQLModel, table=True):
+    """Price change event for a stock."""
 
-    __tablename__ = "stock_price"  # pyright: ignore[reportAssignmentType]
+    __tablename__ = "price_event"  # pyright: ignore[reportAssignmentType]
 
     id: int | None = Field(default=None, primary_key=True)
     ticker: str = Field(foreign_key="stock.ticker", index=True)
@@ -35,11 +35,11 @@ class StockPrice(SQLModel, table=True):
     change_type: ChangeType = Field(default=ChangeType.ADMIN)
     created_at: datetime = Field(default_factory=partial(datetime.now, UTC))
 
-    stock: "Stock" = Relationship(back_populates="prices")  # pyright: ignore[reportAny]  # noqa: UP037
+    stock: "Stock" = Relationship(back_populates="price_events")  # pyright: ignore[reportAny]  # noqa: UP037
 
     @override
     def __repr__(self) -> str:
-        return f"<StockPrice #{self.id} ({self.ticker})>"
+        return f"<PriceEvent #{self.id} ({self.ticker}) {self.change_type.value}>"
 
 
 class StockSnapshot(SQLModel, table=True):
@@ -78,11 +78,11 @@ class Stock(SQLModel, table=True):
     created_at: datetime = Field(default_factory=partial(datetime.now, UTC))
     updated_at: datetime = Field(default_factory=partial(datetime.now, UTC))
 
-    prices: list[StockPrice] = Relationship(  # pyright: ignore[reportAny]
+    price_events: list[PriceEvent] = Relationship(  # pyright: ignore[reportAny]
         back_populates="stock",
         sa_relationship_kwargs={
             "lazy": "selectin",
-            "order_by": "StockPrice.created_at.desc()",
+            "order_by": "PriceEvent.created_at.desc()",
         },
     )
 
@@ -102,9 +102,9 @@ class Stock(SQLModel, table=True):
 
     @property
     def price(self) -> float:
-        """Get current price from latest StockPrice entry."""
-        if self.prices:
-            return self.prices[0].price
+        """Get current price from latest PriceEvent entry."""
+        if self.price_events:
+            return self.price_events[0].price
         return settings.stock_base_price
 
     @property
@@ -115,6 +115,7 @@ class Stock(SQLModel, table=True):
         return ((self.price - self.reference_price) / self.reference_price) * 100
 
 
-async def limit_prices(s: Stock) -> Stock:
-    s.prices = s.prices[:10] if s.prices else s.prices
+def limit_price_events(s: Stock) -> Stock:
+    """Limit price events to most recent 10."""
+    s.price_events = s.price_events[:10] if s.price_events else s.price_events
     return s

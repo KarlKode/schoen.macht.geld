@@ -7,8 +7,8 @@ from app.config import settings
 from app.models.stock import ChangeType
 
 
-class StockPriceResponse(BaseModel):
-    """Stock price entry for API response."""
+class PriceEventResponse(BaseModel):
+    """Price change event for API response."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -38,7 +38,7 @@ class StockResponse(BaseModel):
     description: str
     is_active: bool
     price: float
-    prices: list[StockPriceResponse] = []
+    price_events: list[PriceEventResponse] = []
     created_at: datetime
     updated_at: datetime
 
@@ -51,8 +51,8 @@ class StockResponse(BaseModel):
     @property
     def initial_price(self) -> float:
         """Get initial price from first entry."""
-        if self.prices:
-            return self.prices[-1].price
+        if self.price_events:
+            return self.price_events[-1].price
         return settings.stock_base_price
 
     @computed_field
