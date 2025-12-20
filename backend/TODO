@@ -44,11 +44,11 @@
   * [ ] Environment-specific settings (dev/prod) - not needed for party
   * [x] CORS origins for production
   * [x] SSL/TLS setup (via Caddy reverse proxy)
-* [ ] Database
-  * [ ] Migration strategy (alembic already installed)
-* [ ] Deployment
-  * [ ] Health check endpoint improvements (DB connectivity, scheduler status, disk space)
-  * [ ] Graceful shutdown handling
+* [x] Database
+  * [x] Migration strategy (alembic configured with async support)
+* [x] Deployment
+  * [x] Health check endpoint improvements (DB connectivity, scheduler status, disk space)
+  * [x] Graceful shutdown handling (scheduler.shutdown with wait=True)
 
 ### Must have use-cases
 

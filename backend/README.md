@@ -4,7 +4,7 @@ FastAPI backend for the Schoen Macht Geld stock exchange party game.
 
 ## Requirements
 
-- Python 3.14+
+- Python 3.13+
 - [uv](https://github.com/astral-sh/uv)
 
 ## Setup
@@ -409,6 +409,29 @@ This starts:
 - **caddy** - Reverse proxy on ports 80/443
 
 Data is persisted in `./data/` (database + images).
+
+#### Database Migrations
+
+The project uses Alembic for database migrations:
+
+```bash
+# Run migrations (creates/updates tables)
+uv run alembic upgrade head
+
+# In Docker
+docker compose exec backend alembic upgrade head
+
+# Create a new migration after model changes
+uv run alembic revision --autogenerate -m "description"
+
+# Check current migration status
+uv run alembic current
+
+# Rollback one migration
+uv run alembic downgrade -1
+```
+
+Note: On first startup, `init_db()` creates tables automatically using SQLModel. Migrations are primarily for schema changes after initial deployment.
 
 #### Auto-start on Boot
 

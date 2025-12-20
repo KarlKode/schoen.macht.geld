@@ -28,6 +28,10 @@ COPY --from=builder /app/.venv /app/.venv
 # Copy source code
 COPY --from=builder /app/src /app/src
 
+# Copy alembic configuration and migrations
+COPY alembic.ini ./
+COPY migrations/ migrations/
+
 # Create data directories
 RUN mkdir -p /app/data/images
 
