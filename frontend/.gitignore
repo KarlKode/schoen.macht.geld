@@ -1,0 +1,18 @@
+# Dependencies
+node_modules/
+
+# Next.js
+.next/
+out/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Generated API client
+src/lib/api/client/
+
+# Misc
+*.tsbuildinfo
+next-env.d.ts
