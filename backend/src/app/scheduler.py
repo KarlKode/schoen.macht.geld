@@ -1,6 +1,7 @@
 import random
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from apscheduler.schedulers.asyncio import (  # pyright: ignore[reportMissingTypeStubs]
     AsyncIOScheduler,
@@ -19,6 +20,7 @@ from app.services.atlascloud import (
     AtlasCloudTransientError,
     atlascloud,
 )
+from app.services.google_ai import GoogleAIError, google_ai
 
 scheduler = AsyncIOScheduler()
 
@@ -156,7 +158,7 @@ async def _cleanup_old_snapshots(session: AsyncSession) -> None:
         if delete_ids:
             # Bulk delete using raw SQL for efficiency
             stmt = delete(StockSnapshot).where(col(StockSnapshot.id).in_(delete_ids))
-            await session.exec(stmt)  # pyright: ignore[reportArgumentType]
+            _ = await session.exec(stmt)
             total_deleted += len(delete_ids)
 
     if total_deleted > 0:
@@ -200,6 +202,13 @@ async def process_ai_tasks() -> None:
                 task.error = f"Failed after retries: {e}"
                 task.completed_at = datetime.now(UTC)
                 session.add(task)
+            except GoogleAIError as e:
+                # Google AI fallback also failed
+                logger.error("Google AI error for task {}: {}", task.id, e)
+                task.status = TaskStatus.FAILED
+                task.error = f"Google AI error: {e}"
+                task.completed_at = datetime.now(UTC)
+                session.add(task)
             except OSError as e:
                 # File I/O errors (downloading results, etc.)
                 logger.error("I/O error for task {}: {}", task.id, e)
@@ -211,13 +220,40 @@ async def process_ai_tasks() -> None:
         await session.commit()
 
 
+async def _generate_text_with_fallback(
+    prompt: str, model: str | None = None
+) -> dict[str, Any]:  # pyright: ignore[reportExplicitAny]
+    """Generate text using AtlasCloud with Google AI fallback.
+
+    If force_google_ai is set, uses Google AI directly.
+    Otherwise tries AtlasCloud first, falls back to Google AI on failure.
+    """
+    # Force Google AI if configured
+    if settings.force_google_ai:
+        if not settings.google_ai_api_key:
+            raise GoogleAIError("Google AI forced but no API key configured")
+        logger.info("Using Google AI (forced via config)")
+        return await google_ai.generate_text(prompt)
+
+    # Try AtlasCloud first
+    try:
+        return await atlascloud.generate_text(prompt, model)
+    except (AtlasCloudError, AtlasCloudTransientError) as e:
+        # Fallback to Google AI if available
+        if not settings.google_ai_api_key:
+            raise  # Re-raise if no fallback available
+
+        logger.warning("AtlasCloud failed ({}), falling back to Google AI", e)
+        return await google_ai.generate_text(prompt)
+
+
 async def _submit_task(task: AITask, session: AsyncSession) -> None:
     """Submit a pending task to AtlasCloud."""
     logger.info("Submitting {} task {}", task.task_type.value, task.id)
 
     if task.task_type == TaskType.DESCRIPTION:
         # Text generation is synchronous (fast)
-        response = await atlascloud.generate_text(task.prompt, task.model)
+        response = await _generate_text_with_fallback(task.prompt, task.model)
         # Extract text from chat completion response
         content = response.get("choices", [{}])[0].get("message", {}).get("content", "")  # pyright: ignore[reportAny]
         task.result = content.strip()  # pyright: ignore[reportAny]
@@ -349,8 +385,11 @@ def start_scheduler() -> None:
         settings.snapshot_retention,
     )
 
-    # AI task processor - always enabled if API key is set
-    if settings.atlascloud_api_key:
+    # AI task processor - enabled if AtlasCloud or Google AI (forced) is configured
+    ai_enabled = settings.atlascloud_api_key or (
+        settings.force_google_ai and settings.google_ai_api_key
+    )
+    if ai_enabled:
         _ = scheduler.add_job(  # pyright: ignore[reportUnknownMemberType]
             process_ai_tasks,
             "interval",
@@ -358,11 +397,14 @@ def start_scheduler() -> None:
             id="ai_task_processor",
             replace_existing=True,
         )
+        provider = "Google AI (forced)" if settings.force_google_ai else "AtlasCloud"
         logger.info(
-            "Started AI task processor (interval: {}s)", settings.ai_task_poll_interval
+            "Started AI task processor (interval: {}s, provider: {})",
+            settings.ai_task_poll_interval,
+            provider,
         )
     else:
-        logger.warning("AtlasCloud API key not set, AI task processor disabled")
+        logger.warning("No AI API key configured, AI task processor disabled")
 
     if scheduler.get_jobs():  # pyright: ignore[reportUnknownMemberType]
         scheduler.start()

@@ -57,9 +57,7 @@ async def create_stock(
 
     # Validate ticker format
     if not ticker or len(ticker) > 10:
-        raise HTTPException(
-            status_code=400, detail="Ticker must be 1-10 characters"
-        )
+        raise HTTPException(status_code=400, detail="Ticker must be 1-10 characters")
     if not ticker.isalnum():
         raise HTTPException(
             status_code=400, detail="Ticker must contain only letters and numbers"
@@ -68,9 +66,7 @@ async def create_stock(
     existing = await session.get(Stock, ticker)
     if existing:
         logger.warning("Ticker {} already exists", ticker)
-        raise HTTPException(
-            status_code=409, detail=f"Ticker '{ticker}' already exists"
-        )
+        raise HTTPException(status_code=409, detail=f"Ticker '{ticker}' already exists")
 
     # Validate and process image if provided
     processed_image = None

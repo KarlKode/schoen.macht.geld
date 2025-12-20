@@ -95,7 +95,7 @@ class StockAdmin(ModelView, model=Stock):
         """Clean up old image after model change."""
         old_image = getattr(request.state, "old_stock_image", None)
         if old_image:
-            cleanup_old_image(old_image)
+            cleanup_old_image(old_image)  # pyright: ignore[reportAny]
             logger.info("Admin: cleaned up old image for stock {}", model.ticker)
 
 

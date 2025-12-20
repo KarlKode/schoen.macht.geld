@@ -41,6 +41,12 @@ class Settings(BaseSettings):
     atlascloud_api_key: str = ""
     atlascloud_base_url: str = "https://api.atlascloud.ai"
 
+    # Google AI settings (fallback for text generation)
+    google_ai_api_key: str = ""
+    google_ai_base_url: str = "https://generativelanguage.googleapis.com/v1beta"
+    google_ai_text_model: str = "gemini-2.0-flash"
+    force_google_ai: bool = False  # Force use of Google AI instead of AtlasCloud
+
     # AI models (swap these to try different models)
     atlascloud_text_model: str = "google/gemini-3-flash-preview"
     atlascloud_image_model: str = "black-forest-labs/flux-schnell"

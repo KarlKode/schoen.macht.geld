@@ -68,13 +68,13 @@ async def health_check():
         - scheduler: running status and job count
         - disk: free space in the images directory
     """
-    checks: dict[str, dict[str, str | int | bool]] = {}
+    checks: dict[str, dict[str, str | int | float | bool]] = {}
     all_ok = True
 
     # Check database connectivity
     try:
         async with async_session_maker() as session:
-            await session.exec(text("SELECT 1"))  # pyright: ignore[reportArgumentType]
+            await session.exec(text("SELECT 1"))  # pyright: ignore[reportArgumentType,reportCallIssue]
         checks["database"] = {"status": "ok"}
     except Exception as e:
         checks["database"] = {"status": "error", "error": str(e)}
@@ -83,7 +83,7 @@ async def health_check():
     # Check scheduler status
     try:
         running = scheduler.running
-        job_count = len(scheduler.get_jobs())  # pyright: ignore[reportUnknownMemberType]
+        job_count = len(scheduler.get_jobs())  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
         checks["scheduler"] = {
             "status": "ok" if running else "stopped",
             "running": running,

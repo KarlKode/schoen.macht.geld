@@ -287,6 +287,15 @@ The `percentage_change` field on stocks shows change from the last snapshot (lik
 
 Generate absurd/funny stock content using [AtlasCloud](https://www.atlascloud.ai/) AI APIs. Requires an API key.
 
+### Provider Fallback
+
+For text generation (descriptions), Google AI can be used as a fallback:
+
+- **Automatic fallback**: If `GOOGLE_AI_API_KEY` is set, text generation will automatically fall back to Google AI when AtlasCloud fails
+- **Force Google AI**: Set `FORCE_GOOGLE_AI=true` to always use Google AI for text generation (useful for testing or cost savings)
+
+Note: Image and video generation still require AtlasCloud (no Google AI fallback).
+
 ### Features
 
 - **Description Generation**: Create satirical stock descriptions
@@ -370,6 +379,9 @@ Environment variables (or `.env` file):
 | IMAGE_MAX_DIMENSION | 1920                                 | Max width/height after resize      |
 | IMAGE_QUALITY       | 85                                   | JPEG compression quality (1-100)   |
 | ATLASCLOUD_API_KEY  | (required for AI)                    | AtlasCloud API key                 |
+| GOOGLE_AI_API_KEY   |                                      | Google AI API key (fallback)       |
+| GOOGLE_AI_TEXT_MODEL | gemini-2.0-flash                    | Google AI text model               |
+| FORCE_GOOGLE_AI     | false                                | Force Google AI for text generation|
 | ATLASCLOUD_TEXT_MODEL | google/gemini-3-flash-preview-developer | Text generation model     |
 | ATLASCLOUD_IMAGE_MODEL | black-forest-labs/flux-schnell    | Image generation model             |
 | ATLASCLOUD_VIDEO_T2V_MODEL | alibaba/wan-2.2/t2v-480p-ultra-fast | Text-to-video model        |
