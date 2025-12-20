@@ -35,6 +35,13 @@ services:
       backend:
         condition: service_healthy
 
+  backup:
+    build: ./backup
+    volumes:
+      - ./data:/data:ro        # Read-only access to live data
+      - ./backups:/backups     # Write snapshots here
+    restart: unless-stopped
+
 volumes:
   caddy_data:
   caddy_config:

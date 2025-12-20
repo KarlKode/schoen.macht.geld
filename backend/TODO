@@ -33,8 +33,10 @@
   * [x] Run script for backend (`python -m app` documented in README)
   * [x] Automate start of all required services & stuff so people other than me can do it (docker compose with restart: unless-stopped)
   * [ ] Document setup, configuration & troubleshooting
-* [ ] Backups/Recovery
-  * [ ] Maybe continuously/periodically send current state to external server?
+* [x] Backups/Recovery
+  * [x] Docker container creates atomic SQLite snapshots + rsync images every 10 min
+  * [x] Backups written to ./backups/ (can be different drive/mount)
+  * [x] MacBook pull script documented for disaster recovery
 * [ ] Benchmark DB
 * [x] Make sure that server restarts when it crashes (docker compose restart: unless-stopped)
 * [ ] Logging & Monitoring

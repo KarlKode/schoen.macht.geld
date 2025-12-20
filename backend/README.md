@@ -407,8 +407,9 @@ docker compose build && docker compose up -d
 This starts:
 - **backend** - Python/uvicorn on port 8000 (internal)
 - **caddy** - Reverse proxy on ports 80/443
+- **backup** - Periodic backup service (every 10 minutes)
 
-Data is persisted in `./data/` (database + images).
+Data is persisted in `./data/` (database + images). Backups are written to `./backups/`.
 
 #### Database Migrations
 
@@ -462,6 +463,73 @@ stock.party.example.com {
 ```
 
 Caddy automatically provisions Let's Encrypt certificates.
+
+#### Backup & Disaster Recovery
+
+The backup container creates consistent snapshots every 10 minutes:
+
+```
+┌─────────────────┐     ┌─────────────────┐
+│   App Container │     │ Backup Container│
+│                 │     │   (10 min loop) │
+└────────┬────────┘     └────────┬────────┘
+         │                       │
+         ▼                       ▼
+    ┌─────────┐            ┌──────────┐
+    │ ./data  │───(ro)────▶│ /data    │
+    │ (live)  │            │          │
+    └─────────┘            └────┬─────┘
+                                │ sqlite3 .backup
+                                │ rsync
+                                ▼
+                          ┌──────────┐
+                          │./backups │◀──── External machine pulls
+                          │ (staged) │
+                          └──────────┘
+```
+
+**How it works:**
+- Uses `sqlite3 .backup` for atomic, corruption-safe database snapshots
+- Uses `rsync` to sync images/videos
+- Mounts `./data` as read-only to avoid interference with live data
+- Writes to `./backups/` which can be a different drive/mount
+
+**Pulling backups to your MacBook:**
+
+Set up SSH key auth from your Mac to the Pi, then run this script periodically (via cron or launchd):
+
+```bash
+#!/bin/bash
+# pull-backup.sh - Run on MacBook
+
+RASPBI="pi@raspberrypi.local:/path/to/schoen.macht.geld/backend/backups/"
+LOCAL="$HOME/party-backups/"
+
+rsync -az "$RASPBI" "$LOCAL"
+```
+
+**Recovery (if Pi dies mid-party):**
+
+```bash
+# On MacBook
+cd /path/to/schoen.macht.geld/backend
+cp ~/party-backups/stocks.db ./data/
+cp -r ~/party-backups/images/* ./data/images/
+docker compose up -d
+```
+
+Then either update DNS/hosts on phones or port-forward from Pi to MacBook.
+
+**Using a different backup drive:**
+
+Mount an external drive to `./backups`:
+```yaml
+# docker-compose.yml
+backup:
+  volumes:
+    - ./data:/data:ro
+    - /mnt/usb-backup:/backups  # External drive
+```
 
 ### Manual Deployment (without Docker)
 
