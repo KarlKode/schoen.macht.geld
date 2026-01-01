@@ -77,7 +77,7 @@ class Settings(BaseSettings):
     screenshot_interval: float = 0.2  # seconds between captures (~5 FPS)
     screenshot_width: int = 1920
     screenshot_height: int = 1080
-    screenshot_quality: int = 85  # JPEG quality (1-100)
+    screenshot_quality: int = 100  # JPEG quality (1-100)
     screenshot_views: list[str] = [
         "terminal",
         "leaderboard",

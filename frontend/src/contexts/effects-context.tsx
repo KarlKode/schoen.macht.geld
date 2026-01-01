@@ -122,7 +122,7 @@ export function EffectsProvider({ children }: { children: React.ReactNode }) {
   const [stockMarqueePosition, setStockMarqueePosition] = useState<'top' | 'bottom'>('top')
   const [headlinesMarqueePosition, setHeadlinesMarqueePosition] = useState<'top' | 'bottom'>('bottom')
   const [marqueeScrollSpeed, setMarqueeScrollSpeed] = useState(1)
-  const [kioskMode, setKioskMode] = useState(false)
+  const [kioskMode, setKioskMode] = useState(true)
   const [beatState, setBeatState] = useState<BeatState>({
     bpm: 0,
     status: 'idle',

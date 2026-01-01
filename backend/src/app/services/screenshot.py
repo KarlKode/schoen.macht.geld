@@ -79,6 +79,10 @@ class ScreenshotService:
             viewport={
                 "width": int(settings.screenshot_width),
                 "height": int(settings.screenshot_height),
+            },
+            screen={
+                "width": int(settings.screenshot_width),
+                "height": int(settings.screenshot_height),
             }
         )
         _ = await page.goto(url, wait_until="networkidle")

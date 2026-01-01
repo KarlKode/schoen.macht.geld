@@ -23,7 +23,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from app.services.ai import AIError, ai
 
-BASE_URL = "http://localhost:8080/api"
+BASE_URL = "https://smg.srv.ag/api"
 
 # Placeholder images for stocks (used until AI image is applied)
 PLACEHOLDER_IMAGES = [
@@ -80,20 +80,53 @@ Gib die Daten als JSON-Array aus:
 SEHR WICHTIG: Nur das JSON-Array, kein anderer Text."""
 
 # Fallback prompt for description only
-DESCRIPTION_PROMPT = """Du bist ein Ghostwriter für die Zürcher Partyszene.
-Schreibe eine sarkastische, prahlerische Profilbeschreibung in der Ich-Form für:
+DESCRIPTION_PROMPT = """Du bist ein Ghostwriter für die exzessive Zürcher Partyszene und
+schreibst witzige, bissige "Börsenprospekte" für das Partyspiel "Schön. Macht. Geld.".
+Das Spiel wird vom "Verein für ambitionierten Konsum (VAK)" und dem Club "Amphitheater"
+veranstaltet. Das Motto: hedonistischer Konsum, Macht, Schönheit und Drogen.
 
-Spitzname: {title}
+Schreibe eine sarkastische, ironische und prahlerische Profilbeschreibung für die Aktie,
+basierend auf dem Aktientitel (Name der Person/Firma).
+
+Aktientitel: {title}
+Aktuelle Beschreibung (falls vorhanden): {description}
+{image_attached_text}
 
 Regeln:
-- Ich-Perspektive
-- Selbstverliebt, sarkastisch, satirisch, amüsierter/amüsanter Unterton. Potentiell etwas klamaukig
-- Finanzjargon mit Party-Slang mischen
-- Max 500 Zeichen
-- Deutsch
-- Themen: Zürcher Nachtleben, Konsum, Status, Exzesse, Finanzjargon gemischt mit Party-Slang
+1. **Stil:** Variiere zwischen verschiedenen Formaten:
+   - Ich-Perspektive (prahlerisch, selbstverliebt)
+   - Corporate Mission Statement (Unternehmensphilosophie-Parodie)
+   - Investor Pitch (Q3 Highlights, Kerngeschäft, Prognosen)
+   - Tagline (kurz, prägnant, memorable)
+2. **Ton:** Selbstverliebt, sarkastisch, satirisch. Mische Finanzjargon mit Party-Slang.
+3. **Themen:** Zürcher Nachtleben, Konsum, Status, Oberflächlichkeit, Exzesse,
+   Networking, VIP-Kultur, fragwürdige Substanzen, Afterhours.
+4. **Länge:** Maximal 500 Zeichen (inkl. Leerzeichen).
+5. **Sprache:** Deutsch.
+{image_attached_rule}
 
-Gib nur die Beschreibung aus."""
+Beispiele (variiere den Stil!):
+- "Mission Statement: Wir maximieren hedonistische Rendite bei minimalem Verantwortungs-
+  bewusstsein. Unsere Kernkompetenz? Networking zwischen 2 und 6 Uhr morgens."
+- "Unternehmensphilosophie: Move fast and break hearts. Unsere Stakeholder sind alle,
+  die meine Nummer haben. Meine Shareholder sind alle, die sie gerne hätten."
+- "Premium seit der Geburt. Exklusiv bis zum Blackout."
+- "Think different. Sniff different."
+- "Just do it. Frag nicht was."
+- "The Future is Now. Der Kater ist Morgen."
+- "Kerngeschäft: strategische Präsenz an exklusiven Locations. Wettbewerbsvorteil:
+  Ich kenne den Türsteher. Risikohinweis: keiner."
+- "Ich bin keine Investition – ich bin ein Lifestyle. Wer mich kauft, kauft Zugang
+  zu Räumen, die auf keiner Karte existieren. Terms & Conditions: Es gibt keine."
+- "Analyst*innen empfehlen: STRONG BUY. Meine Ex empfiehlt: SELL. Der Markt
+  entscheidet. Der Markt bin ich."
+- "Mein Portfolio besteht aus Vitamin K, fragwürdigen Entscheidungen und einem
+  Netzwerk aus Menschen, die alle 'irgendwas mit Medien' machen. ROI? Return on
+  Intoxication."
+- "Mein Lebenswerk? Eine Studie in exzessiver Selbstüberschätzung, finanziert durch
+  Vitamin B und den Glauben, dass Schlaf überbewertet ist. Kaufempfehlung: stark."
+
+Gib nur die Beschreibung aus, keinen anderen Text."""
 
 
 async def generate_stocks_batch(count: int) -> list[dict]:

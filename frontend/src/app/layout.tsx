@@ -69,6 +69,7 @@ export default function RootLayout({
       <head>
         <title>Schön. Macht. Geld.</title>
         <meta name="description" content="Das ultimative Börsensimulations-Partyspiel von VAK & Amphitheater." />
+        <meta name="google" content="notranslate" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
       </head>
